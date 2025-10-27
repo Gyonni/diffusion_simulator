@@ -1,0 +1,16 @@
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+*.pyc
+*.pyo
+*.pyd
+dist/
+build/
+*.spec
+results/
+logs/
+*.npz
+*.csv
+*.png
+*.pdf
+
