@@ -1,23 +1,62 @@
 # Diffusion–Reaction GUI Simulator
 
-A GUI-based multilayer diffusion–reaction simulator using a Crank–Nicolson scheme. Each layer may have distinct thickness, diffusivity, and reaction rate; the final layer is treated as the absorbing target and reports flux and cumulative uptake.
+Multilayer 1D diffusion–reaction simulator with a Tkinter GUI and Crank–Nicolson time integration. Each layer may have unique thickness, diffusivity, and reaction rate; the final layer acts as the absorbing/ reactive target and reports flux and cumulative uptake over time.
 
-- GUI entry: `python -m diffreact_gui`
-- CLI run: `python -m diffreact_gui.main --cli [--debug]`
-- Standalone launcher for PyInstaller: `python run_diffreact_gui.py`
+## Requirements
 
-Outputs (default): `results/results.npz`, `results/flux_vs_time.csv`, `results/profile_t_<t>.csv`, `results/metadata.json`.
+- Python 3.10+
+- Packages: `numpy`, `matplotlib` (Tkinter ships with CPython)
 
-PyInstaller (one-file):
+Install dependencies:
 
+```bash
+python -m pip install numpy matplotlib
 ```
+
+## Running the simulator
+
+- GUI: `python -m diffreact_gui`
+- CLI mode: `python -m diffreact_gui.main --cli [--debug]`
+- PyInstaller entry point: `python run_diffreact_gui.py`
+
+Outputs land in `results/` by default (`results.npz`, `flux_vs_time.csv`, `profile_t_<t>.csv`, `metadata.json`).
+
+## GUI features
+
+- Layer table for per-layer parameters (top → bottom); the last row is the target layer.
+- Progress bar updates while the solver runs; completion dialog confirms success.
+- Built-in “View Manual” window summarises the governing equations, usage, and input constraints.
+- Time navigation beneath the profile plot (slider, spin box, step buttons) keeps the displayed snapshot and label in sync.
+- Validation before every run checks physical constraints (positive thickness/diffusivity, `Δt < t_max`, etc.) and shows actionable error dialogs if violated.
+
+## Numerical notes
+
+- Crank–Nicolson scheme on a shared non-uniform grid; continuity of concentration and flux enforced at every interface.
+- Time step automatically capped based on the smallest `(Δx)²/D` to suppress boundary oscillations. Diagnostics record both the requested and effective `Δt`.
+- Mass balance warning triggers when `|R| / max(|ΔM|, 10⁻¹²)` exceeds 1 %.
+- For passive layers (`k = 0`), coarse node counts (2–4) are generally sufficient; reserve finer meshes for the reactive target layer to save memory.
+
+Right-hand boundary options:
+
+- **Neumann**: `∂C/∂x = 0` (impermeable backside)
+- **Dirichlet**: `C = 0` (perfect sink)
+
+## Testing
+
+```bash
+python run_tests.py
+```
+
+or (if `pytest` is available):
+
+```bash
+pytest -q
+```
+
+## Packaging
+
+Create a single-file executable (Windows example):
+
+```bash
 pyinstaller --onefile --noconsole --name DiffReactGUI run_diffreact_gui.py
 ```
-
-Python 3.10+ recommended. Dependencies: numpy, matplotlib, tkinter (builtin).
-
-Right-hand boundary modes:
-- **Neumann**: `∂C/∂x = 0` at the stack exit (impermeable)
-- **Dirichlet**: `C = 0` at the stack exit (perfect sink)
-
-The solver checks mass balance (`|R|/|ΔM|`) and raises a warning if the residual exceeds 1 %. Use the GUI layer table to tune spatial resolution (target `ell_over_dx_min > 10`) for accurate uptake predictions.
