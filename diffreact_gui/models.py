@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 
 @dataclass(frozen=True)
@@ -24,4 +24,4 @@ class SimParams:
     dt: float  # seconds
     t_max: float  # seconds
     bc_right: str  # 'Neumann' or 'Dirichlet'
-
+    probe_position: Optional[float] = None

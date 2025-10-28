@@ -19,7 +19,7 @@ python -m pip install numpy matplotlib
 - CLI mode: `python -m diffreact_gui.main --cli [--debug]`
 - PyInstaller entry point: `python run_diffreact_gui.py`
 
-Outputs land in `results/` by default (`results.npz`, `flux_vs_time.csv`, `profile_t_<t>.csv`, `metadata.json`).
+Outputs land in `results/` by default (`results.npz`, `flux_vs_time.csv`, `concentration_profiles.csv`, `profile_t_<t>.csv`, `metadata.json`).
 
 ## GUI features
 
@@ -28,6 +28,10 @@ Outputs land in `results/` by default (`results.npz`, `flux_vs_time.csv`, `profi
 - Built-in “View Manual” window summarises the governing equations, usage, and input constraints.
 - Time navigation beneath the profile plot (slider, spin box, step buttons) keeps the displayed snapshot and label in sync.
 - Validation before every run checks physical constraints (positive thickness/diffusivity, `Δt < t_max`, etc.) and shows actionable error dialogs if violated.
+- Optional Arrhenius helper (enter T, D₀, Ea) to populate layer diffusivities.
+- Flux probe entry lets you inspect flux/cumulative uptake at an arbitrary position in the stack.
+- Mass/uptake metrics are reported for the final layer; choose its properties accordingly.
+- Flux view selector lets you focus on surface, interface, exit, or probe flux/uptake curves individually.
 
 ## Numerical notes
 

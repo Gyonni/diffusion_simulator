@@ -45,17 +45,19 @@ CLI mode runs the default stack, writes outputs to `results/`, and logs mass-bal
 ## 3. Interface Walkthrough
 
 ### 3.1 Layout
-- **Left panel**: global parameters (`C_s`, `Δt`, `t_max`), right-boundary selector, and a layer table with Add/Update/Remove and reordering controls. The bottom row is interpreted as the absorbing target layer.
+- **Left panel**: global parameters (`C_s`, `Δt`, `t_max`), right-boundary selector, and a layer table with Add/Update/Remove and reordering controls. The bottom row is treated as the reporting layer for mass/uptake metrics.
 - **Right panel**: stacked Matplotlib plots (flux/uptake above, concentration profile below), a navigation toolbar for zoom/pan/reset, and a time slider labelled `Time [s]: …`.
 
 ### 3.2 Workflow
-1. Configure global settings and build the layer stack. Set `k=0` for purely diffusive barriers; specify non-zero `k` only for layers with reactions/absorption.
+1. Configure global settings and build the layer stack. Set `k=0` for purely diffusive barriers; specify non-zero `k` only for layers with reactions/absorption. Use the Arrhenius helper (Temperature, D₀, Ea) if you prefer the diffusivity to be computed instead of entered manually.
 2. Choose the terminal boundary (`Dirichlet` sink or `Neumann` impermeable) and click **Run Simulation**. The button remains disabled while the solver runs in a background thread.
 3. After completion:
-   - The flux chart displays `J_source(t)` (entry surface), `J_target(t)` (into the target layer), `J_end(t)` (stack exit), cumulative uptake `∫J_target dt`, and the integrated mass inside the target layer.
+   - The flux chart displays surface flux, target-interface flux, exit flux, cumulative target uptake, target mass, and—when a probe position is provided—probe flux with its cumulative integral.
    - The concentration profile spans the entire stack with dashed vertical lines marking interfaces.
 4. Use the Matplotlib toolbar to zoom or pan. Adjust the bottom controls (slider, ◀/▶ step buttons, or the numeric spin box) to inspect different snapshots; the label updates to the exact simulation time.
-5. Export results via **Export Flux CSV** (writes `results.npz` and `flux_vs_time.csv`) or export the current profile via **Export Current Profile CSV**.
+5. Export results via **Export Flux CSV** (writes `results.npz`, `flux_vs_time.csv`, and the full concentration matrix) or export the current profile via **Export Current Profile CSV**.
+6. (Optional) Enter a flux probe position (in metres) or select a layer and click **Plot** to overlay probe flux / uptake on the flux chart.
+7. Use the **Flux view** dropdown to focus on surface, target interface, exit, or probe curves individually.
 
 ### 3.3 Status Messages
 - Mass-balance warnings (relative residual > 1 %) appear in a modal dialog.
@@ -76,7 +78,7 @@ CLI mode runs the default stack, writes outputs to `results/`, and logs mass-bal
 
 | Column | Units | Description |
 |--------|-------|-------------|
-| Name | – | Label stored in metadata/exports. Final row is the target material. |
+| Name | – | Label stored in metadata/exports. The final row is the reporting layer for mass/uptake. |
 | Thickness | m | Physical thickness of the layer segment. |
 | Diffusivity | m²·s⁻¹ | Fickian diffusion coefficient. |
 | Reaction `k` | s⁻¹ | First-order sink rate; use `0` for purely diffusive layers. |
@@ -106,11 +108,12 @@ CLI mode runs the default stack, writes outputs to `results/`, and logs mass-bal
 - The solver automatically caps `Δt` using the smallest `(Δx)^2/D` across the stack to suppress boundary oscillations, and will halve it further (up to six times) if the linear solve fails. The results include `dt_used` and `dt_requested` in the diagnostics block.
 
 ### 5.3 Flux & Uptake Metrics
-- `J_source` — flux at the entry surface (`x = 0`).
-- `J_target` — flux entering the target layer (interface between the last two layers, or equal to `J_end` in single-layer cases).
-- `J_end` — flux at the stack exit (`x = L_total`).
-- `cum_source`, `cum_target` — cumulative integrals of `J_source` and `J_target`.
-- `mass_target(t) = ∫_{target} C(x,t) dx` — stored mass per unit area inside the target layer.
+- **Flux @ surface (x = 0)** — same as `J_source`.
+- **Flux into target interface** — `J_target` across the boundary between the penultimate and final layers.
+- **Flux @ exit (x = L)** — same as `J_end`.
+- **Flux @ probe** — flux across the element containing the user-selected probe position (displayed only when a probe is defined).
+- **∫ Flux …** curves — time integrals of the respective fluxes (uptake per unit area).
+- **Mass in target** — `∫_{target} C(x,t) dx`, the amount stored within the target layer.
 
 ### 5.4 Mass-Balance Diagnostic
 
@@ -128,10 +131,11 @@ All runs write into `results/` (created on demand):
 
 | File | Description |
 |------|-------------|
-| `results.npz` | Arrays `t`, `x`, `C_xt`, `J_source`, `J_target`, `J_end`, `cum_source`, `cum_target`, `mass_target`, `layer_boundaries`. |
-| `flux_vs_time.csv` | CSV columns: `t`, `J_source`, `J_target`, `J_end`, `cum_source`, `cum_target`, `cum_end`, `mass_target` (units listed in the header). |
+| `results.npz` | Arrays `t`, `x`, `C_xt`, `J_source`, `J_target`, `J_end`, `cum_source`, `cum_target`, `cum_end`, `mass_target`, `layer_boundaries`, `D_nodes`, `D_edges` (when available). |
+| `flux_vs_time.csv` | CSV columns: `t`, `Flux_surface`, `Flux_target_interface`, `Flux_exit`, `Cum_flux_surface`, `Cum_flux_target_interface`, `Cum_flux_exit`, `Mass_target`, optionally `Flux_probe`, `Cum_flux_probe` (units listed in the header). |
+| `concentration_profiles.csv` | Columns: `x` followed by `C(x, t_i)` for every stored time slice. |
 | `profile_t_<t>.csv` | Exported concentration profile for the selected slider time. |
-| `metadata.json` | Global parameters, full layer table, boundary condition, and layer boundaries. |
+| `metadata.json` | Global parameters, full layer table, boundary condition, probe position (if any), and layer boundaries. |
 
 Outputs are overwritten for each run; copy the directory to archive previous results.
 

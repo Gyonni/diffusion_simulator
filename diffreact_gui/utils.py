@@ -79,22 +79,37 @@ def save_results_npz(
     cum_end: np.ndarray,
     mass_target: np.ndarray,
     layer_boundaries: np.ndarray,
+    D_nodes: np.ndarray | None = None,
+    D_edges: np.ndarray | None = None,
+    J_probe: np.ndarray | None = None,
+    cum_probe: np.ndarray | None = None,
+    probe_position: float | None = None,
 ) -> str:
     npz_path = os.path.join(base_path, "results.npz")
-    np.savez(
-        npz_path,
-        t=t,
-        x=x,
-        C_xt=C_xt,
-        J_source=J_source,
-        J_target=J_target,
-        J_end=J_end,
-        cum_source=cum_source,
-        cum_target=cum_target,
-        cum_end=cum_end,
-        mass_target=mass_target,
-        layer_boundaries=layer_boundaries,
-    )
+    payload: Dict[str, Any] = {
+        "t": t,
+        "x": x,
+        "C_xt": C_xt,
+        "J_source": J_source,
+        "J_target": J_target,
+        "J_end": J_end,
+        "cum_source": cum_source,
+        "cum_target": cum_target,
+        "cum_end": cum_end,
+        "mass_target": mass_target,
+        "layer_boundaries": layer_boundaries,
+    }
+    if D_nodes is not None:
+        payload["D_nodes"] = D_nodes
+    if D_edges is not None:
+        payload["D_edges"] = D_edges
+    if J_probe is not None:
+        payload["J_probe"] = J_probe
+    if cum_probe is not None:
+        payload["cum_probe"] = cum_probe
+    if probe_position is not None:
+        payload["probe_position"] = probe_position
+    np.savez(npz_path, **payload)
     return npz_path
 
 
@@ -108,14 +123,40 @@ def save_csv_flux(
     cum_target: np.ndarray,
     cum_end: np.ndarray,
     mass_target: np.ndarray,
+    *,
+    J_probe: np.ndarray | None = None,
+    cum_probe: np.ndarray | None = None,
 ) -> str:
     csv_path = os.path.join(base_path, "flux_vs_time.csv")
-    header = (
-        "t[s],J_source[mol/(m^2*s)],J_target[mol/(m^2*s)],J_end[mol/(m^2*s)],"
-        "cum_source[mol/m^2],cum_target[mol/m^2],cum_end[mol/m^2],mass_target[mol/m^2]"
-    )
-    data = np.column_stack([t, J_source, J_target, J_end, cum_source, cum_target, cum_end, mass_target])
-    np.savetxt(csv_path, data, delimiter=",", header=header, comments="")
+    columns = [
+        t,
+        J_source,
+        J_target,
+        J_end,
+        cum_source,
+        cum_target,
+        cum_end,
+        mass_target,
+    ]
+    header = [
+        "t[s]",
+        "Flux_surface[mol/(m^2*s)]",
+        "Flux_target_interface[mol/(m^2*s)]",
+        "Flux_exit[mol/(m^2*s)]",
+        "Cum_flux_surface[mol/m^2]",
+        "Cum_flux_target_interface[mol/m^2]",
+        "Cum_flux_exit[mol/m^2]",
+        "Mass_target[mol/m^2]",
+    ]
+    if J_probe is not None and J_probe.size:
+        columns.append(J_probe)
+        header.append("Flux_probe[mol/(m^2*s)]")
+    if cum_probe is not None and cum_probe.size:
+        columns.append(cum_probe)
+        header.append("Cum_flux_probe[mol/m^2]")
+    data = np.column_stack(columns)
+    header_line = ",".join(header)
+    np.savetxt(csv_path, data, delimiter=",", header=header_line, comments="")
     return csv_path
 
 
@@ -124,6 +165,14 @@ def save_csv_profile(base_path: str, x: np.ndarray, C: np.ndarray, t_value: floa
     header = "x[m],C[mol/m^3]"
     data = np.column_stack([x, C])
     np.savetxt(csv_path, data, delimiter=",", header=header, comments="")
+    return csv_path
+
+
+def save_profiles_matrix(base_path: str, x: np.ndarray, t: np.ndarray, C_xt: np.ndarray) -> str:
+    csv_path = os.path.join(base_path, "concentration_profiles.csv")
+    header = ["x[m]"] + [f"C(t={ti:.6g}s)[mol/m^3]" for ti in t]
+    data = np.column_stack([x, C_xt.T])
+    np.savetxt(csv_path, data, delimiter=",", header=",".join(header), comments="")
     return csv_path
 
 

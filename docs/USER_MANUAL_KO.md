@@ -43,17 +43,19 @@ CLI 모드는 GUI 없이 기본 스택을 계산하여 `results/`에 저장하�
 ## 3. 인터페이스 안내
 
 ### 3.1 레이아웃
-- **좌측 패널**: 전역 변수(`C_s`, `Δt`, `t_max`), 우측 경계 조건 선택, 다층 테이블(추가/수정/삭제/순서 이동). 테이블의 마지막 행이 흡수(target) 층입니다.
+- **좌측 패널**: 전역 변수(`C_s`, `Δt`, `t_max`), 우측 경계 조건 선택, 다층 테이블(추가/수정/삭제/순서 이동). 마지막 행은 보고용(목표) 층으로 간주하여 질량/흡수량을 집계합니다.
 - **우측 패널**: Matplotlib 그래프(플럭스/누적량, 농도 분포), 네비게이션 툴바(확대/축소/이동), `Time [s]: …` 형식으로 표시되는 시간 슬라이더.
 
 ### 3.2 사용 순서
-1. 전역 변수와 층 정보를 입력합니다. 순수 확산층은 `k=0`으로, 반응이 있는 층만 `k>0`을 지정합니다.
+1. 전역 변수와 층 정보를 입력합니다. 순수 확산층은 `k=0`으로, 반응이 있는 층만 `k>0`을 지정합니다. 확산계수를 직접 입력하지 않으려면 Arrhenius 보조 입력(온도, D₀, Ea)으로 값을 계산할 수 있습니다.
 2. 우측 경계 조건(완전 흡수 Dirichlet 또는 불투과 Neumann)을 선택한 뒤 **Run Simulation**을 클릭합니다. 계산 동안 버튼은 비활성화됩니다.
 3. 계산이 완료되면:
-   - 플럭스 그래프에 `J_source`(x=0), `J_target`(마지막 층 입구), `J_end`(스택 끝), `∫J_target dt`, 목표 층 내부의 적분 농도 `mass_target`이 표시됩니다.
+   - 플럭스 그래프에 표면 플럭스, 목표 층 경계 플럭스, 출구 플럭스, 누적 유입량, 목표 층 내부 질량이 표시되며, 탐침을 지정하면 해당 위치의 플럭스/누적량도 함께 나타납니다.
    - 농도 그래프는 전체 두께를 그리며, 층 경계는 점선으로 표시됩니다.
 4. Matplotlib 툴바로 그래프를 확대/이동하고, 하단 슬라이더·◀/▶ 버튼·숫자 입력 스핀박스로 시간을 조절하면 라벨에 정확한 시간이 표시됩니다.
-5. **Export Flux CSV**(결과 NPZ + 플럭스 CSV 저장) 또는 **Export Current Profile CSV**(현재 시점 농도 분포 저장)를 이용해 데이터를 내보냅니다.
+5. **Export Flux CSV**를 누르면 `results.npz`, `flux_vs_time.csv`, `concentration_profiles.csv`가 함께 저장되며, **Export Current Profile CSV**로 현재 시점의 농도 분포를 별도로 저장할 수 있습니다.
+6. (선택) 플럭스 탐침 위치[ m ]를 입력하거나 레이어를 선택한 뒤 **Plot**을 누르면 해당 위치의 플럭스/누적량이 그래프에 추가됩니다.
+7. **Flux view** 드롭다운을 이용하면 표면·경계·출구·탐침 플럭스 중 원하는 곡선만 표시할 수 있습니다.
 
 ### 3.3 상태 메시지
 - 질량 보존 오차가 1 %를 넘으면 경고 창이 나타납니다.
@@ -74,7 +76,7 @@ CLI 모드는 GUI 없이 기본 스택을 계산하여 `results/`에 저장하�
 
 | 항목 | 단위 | 설명 |
 |------|------|------|
-| 이름 | – | 메타데이터/내보내기에 기록되는 이름. 마지막 행이 목표 층 |
+| 이름 | – | 메타데이터/내보내기에 기록되는 이름. 마지막 행은 보고용(목표) 층 |
 | 두께 | m | 해당 층의 물리적 두께 |
 | 확산계수 | m²·s⁻¹ | 층 내부 확산계수 |
 | 반응속도 `k` | s⁻¹ | 1차 반응(흡수) 속도. 순수 확산층은 0 |
@@ -104,11 +106,12 @@ CLI 모드는 GUI 없이 기본 스택을 계산하여 `results/`에 저장하�
 - 스택 전체의 최소 `(Δx)^2/D`를 기준으로 `Δt`를 자동으로 제한해 경계 근처 오실레이션을 억제하며, 필요 시 최대 6회까지 절반씩 추가 감소합니다. 진단 정보에서 `dt_requested`, `dt_used` 값을 확인할 수 있습니다.
 
 ### 5.3 플럭스 및 흡수량
-- `J_source`: x=0에서의 플럭스
-- `J_target`: 목표 층 입구 인터페이스의 플럭스 (단일 층이면 `J_end`와 동일)
-- `J_end`: 스택 끝 플럭스
-- `cum_source`, `cum_target`: 각각의 누적 플럭스
-- `mass_target(t) = ∫_{target} C(x,t) dx`: 단위 면적당 목표 층에 저장된 질량
+- **표면 플럭스 (x = 0)** — `J_source`
+- **목표 층 경계 플럭스** — 목표 층과 그 위층 사이 인터페이스의 `J_target`
+- **출구 플럭스 (x = L)** — `J_end`
+- **탐침 플럭스** — 사용자가 지정한 위치(또는 선택한 레이어 중심)에서의 플럭스
+- **∫ Flux …** 곡선 — 해당 플럭스의 시간 적분(면적당 누적 유입량)
+- **목표 층 질량** — `∫_{target} C(x,t) dx`, 목표 층 내부에 저장된 질량
 
 ### 5.4 질량 보존 검사
 
@@ -124,10 +127,11 @@ R = \int J_{\text{source}} dt - \int J_{\text{end}} dt - \iint k(x) C \, dx \, d
 
 | 파일 | 설명 |
 |------|------|
-| `results.npz` | `t`, `x`, `C_xt`, `J_source`, `J_target`, `J_end`, `cum_source`, `cum_target`, `mass_target`, `layer_boundaries` 배열 |
-| `flux_vs_time.csv` | `t`, `J_source`, `J_target`, `J_end`, `cum_source`, `cum_target`, `cum_end`, `mass_target` (헤더에 단위 표기) |
+| `results.npz` | `t`, `x`, `C_xt`, `J_source`, `J_target`, `J_end`, `cum_source`, `cum_target`, `cum_end`, `mass_target`, `layer_boundaries`, `D_nodes`, `D_edges`(있을 경우) |
+| `flux_vs_time.csv` | `t`, `Flux_surface`, `Flux_target_interface`, `Flux_exit`, `Cum_flux_surface`, `Cum_flux_target_interface`, `Cum_flux_exit`, `Mass_target`, (설정 시) `Flux_probe`, `Cum_flux_probe` |
+| `concentration_profiles.csv` | `x`와 모든 저장 시점의 `C(x,t)`를 열 방향으로 포함한 행렬 |
 | `profile_t_<t>.csv` | 현재 슬라이더 시간의 농도–위치 프로필 |
-| `metadata.json` | 전역 변수, 층 테이블, 경계 조건, 층 경계 정보 |
+| `metadata.json` | 전역 변수, 층 테이블, 경계 조건, 탐침 위치(있을 경우), 층 경계 정보 |
 
 매 실행마다 덮어쓰므로 필요 시 다른 위치에 복사해 보관하세요.
 

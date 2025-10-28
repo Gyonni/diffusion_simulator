@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import math
+import textwrap
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import List, Optional
 
 from tkinter import scrolledtext
+
+import numpy as np
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
@@ -39,12 +43,13 @@ MANUAL_HTML = """
   <li>Adjust global parameters (C<sub>s</sub>, Δt, t<sub>max</sub>) and choose the terminating boundary.</li>
   <li>Press <strong>Run Simulation</strong>; progress updates appear below the controls.</li>
   <li>Inspect flux, cumulative uptake, and the spatial profile using the toolbar, slider, or stepper buttons.</li>
+  <li>Use the <strong>Flux view</strong> dropdown to focus on surface, target interface, exit, or probe curves.</li>
   <li>Export flux histories (CSV/NPZ) or the current profile (CSV) via the buttons on the left.</li>
 </ol>
 
 <h2>Input Constraints</h2>
 <ul>
-  <li>At least one layer; final layer is the absorbing target.</li>
+  <li>At least one layer; the final row is treated as the reporting layer for mass/uptake metrics.</li>
   <li>Layer thickness &gt; 0, diffusivity &gt; 0, reaction rate ≥ 0, nodes ≥ 2.</li>
   <li>Surface concentration C<sub>s</sub> ≥ 0.</li>
   <li>Δt &gt; 0 and less than t<sub>max</sub>. Very large Δt will be reduced automatically.</li>
@@ -52,36 +57,43 @@ MANUAL_HTML = """
 
 <h2>Key Quantities</h2>
 <ul>
-  <li><strong>J<sub>source</sub></strong> = −D&nbsp;∂C/∂x at x = 0</li>
-  <li><strong>J<sub>target</sub></strong>: flux across the final interface</li>
-  <li><strong>mass<sub>target</sub></strong>(t) = ∫<sub>target</sub> C(x,t) dx</li>
-  <li><strong>ℓ</strong> = √(D/k) reported for the target layer; ensure ℓ/Δx ≥ 10 for accuracy.</li>
+  <li><strong>Flux @ surface</strong> = −D&nbsp;∂C/∂x at x = 0</li>
+  <li><strong>Flux into reporting interface</strong>: flux across the boundary between the penultimate and final layers</li>
+  <li><strong>Flux @ exit</strong>: flux at x = L</li>
+  <li><strong>Flux @ probe</strong>: flux across the element containing the user-specified position (optional)</li>
+  <li><strong>Mass in reporting layer</strong> = ∫<sub>reporting</sub> C(x,t) dx</li>
+  <li><strong>ℓ</strong> = √(D/k) reported for the final layer; keep ℓ/Δx ≥ 10 for accuracy.</li>
 </ul>
 
 <h2>Tips</h2>
 <ul>
   <li>Δt is automatically capped using the smallest (Δx)²/D to reduce boundary oscillations.</li>
-  <li>Use minimal node counts for passive layers (k = 0) to save memory; the target layer needs finer resolution.</li>
+  <li>Use coarse node counts for passive layers (k = 0) and concentrate resolution in the reactive/reporting layer.</li>
+  <li>Set a flux probe (position or layer) to inspect local flux and uptake alongside the curve.</li>
   <li>Use the CLI (<code>python -m diffreact_gui.main --cli --debug</code>) for quick batch runs.</li>
 </ul>
 """
 
 CONSTRAINTS_TEXT = (
     "Input requirements:\n"
-    "  • At least one layer (last row is the target).\n"
+    "  • At least one layer (final row is the reporting layer).\n"
     "  • Thickness > 0, diffusivity > 0, reaction rate ≥ 0, nodes ≥ 2.\n"
     "  • Surface concentration Cs ≥ 0.\n"
     "  • Δt > 0 and Δt < t_max.\n"
 )
+
+ARRHENIUS_R = 8.31446261815324  # J/(mol·K)
 
 from .config import Defaults, RESULTS_DIR
 from .models import LayerParam, SimParams
 from .plots import create_figures, update_flux_axes, update_profile_axes
 from .solver import mass_balance_diagnostics, run_simulation
 from .utils import (
+    cumulative_trapz,
     ensure_results_dir,
     save_csv_flux,
     save_csv_profile,
+    save_profiles_matrix,
     save_metadata,
     save_results_npz,
     validate_params,
@@ -93,8 +105,15 @@ class LayerTable(ttk.Frame):
 
     columns = ("name", "thickness", "diffusivity", "reaction", "nodes")
 
-    def __init__(self, master: tk.Widget, layers: List[LayerParam]) -> None:
+    def __init__(
+        self,
+        master: tk.Widget,
+        layers: List[LayerParam],
+        *,
+        on_layers_changed: Optional[callable] = None,
+    ) -> None:
         super().__init__(master)
+        self._on_layers_changed = on_layers_changed
 
         self.tree = ttk.Treeview(self, columns=self.columns, show="headings", height=6)
         for col, heading in zip(
@@ -135,6 +154,30 @@ class LayerTable(ttk.Frame):
         form.grid_columnconfigure(0, weight=1)
         form.grid_columnconfigure(1, weight=1)
 
+        arr_frame = ttk.Labelframe(self, text="Arrhenius (optional)")
+        arr_frame.pack(fill=tk.X, pady=4)
+
+        self.arrhenius_vars = {
+            "T": tk.StringVar(value=""),
+            "D0": tk.StringVar(value=""),
+            "Ea": tk.StringVar(value=""),
+        }
+
+        ttk.Label(arr_frame, text="Temperature [K]").grid(row=0, column=0, sticky="w", padx=2, pady=2)
+        ttk.Entry(arr_frame, textvariable=self.arrhenius_vars["T"], width=12).grid(row=0, column=1, padx=2, pady=2)
+
+        ttk.Label(arr_frame, text="D0 [m^2/s]").grid(row=1, column=0, sticky="w", padx=2, pady=2)
+        ttk.Entry(arr_frame, textvariable=self.arrhenius_vars["D0"], width=12).grid(row=1, column=1, padx=2, pady=2)
+
+        ttk.Label(arr_frame, text="Ea [J/mol]").grid(row=2, column=0, sticky="w", padx=2, pady=2)
+        ttk.Entry(arr_frame, textvariable=self.arrhenius_vars["Ea"], width=12).grid(row=2, column=1, padx=2, pady=2)
+
+        ttk.Button(
+            arr_frame,
+            text="Compute D",
+            command=self._apply_arrhenius,
+        ).grid(row=0, column=2, rowspan=3, padx=6, pady=2, sticky="ns")
+
         btn_bar = ttk.Frame(self)
         btn_bar.pack(fill=tk.X, pady=4)
         ttk.Button(btn_bar, text="Add", command=self._add).pack(side=tk.LEFT, padx=2)
@@ -143,12 +186,6 @@ class LayerTable(ttk.Frame):
         ttk.Button(btn_bar, text="↑", width=3, command=lambda: self._move(-1)).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_bar, text="↓", width=3, command=lambda: self._move(1)).pack(side=tk.LEFT, padx=2)
 
-        ttk.Label(
-            self,
-            text="* 마지막 행이 흡수 물질 (Target Layer) 입니다.",
-            foreground="gray",
-        ).pack(anchor=tk.W, pady=(2, 0))
-
         for layer in layers:
             self._insert_layer(layer)
         if layers:
@@ -156,6 +193,7 @@ class LayerTable(ttk.Frame):
             self.tree.selection_set(first_id)
             self.tree.focus(first_id)
             self._on_select()
+        self._notify_layers_changed()
 
     def _insert_layer(self, layer: LayerParam) -> None:
         self.tree.insert(
@@ -190,6 +228,7 @@ class LayerTable(ttk.Frame):
             messagebox.showerror("Invalid layer", str(exc), parent=self)
             return
         self._insert_layer(layer)
+        self._notify_layers_changed()
 
     def _update(self) -> None:
         item = self._selected_item()
@@ -210,12 +249,14 @@ class LayerTable(ttk.Frame):
                 str(layer.nodes),
             ),
         )
+        self._notify_layers_changed()
 
     def _remove(self) -> None:
         item = self._selected_item()
         if not item:
             return
         self.tree.delete(item)
+        self._notify_layers_changed()
 
     def _move(self, direction: int) -> None:
         item = self._selected_item()
@@ -227,6 +268,27 @@ class LayerTable(ttk.Frame):
         if new_index < 0 or new_index >= len(self.tree.get_children(parent)):
             return
         self.tree.move(item, parent, new_index)
+        self._notify_layers_changed()
+
+    def _apply_arrhenius(self) -> None:
+        item = self._selected_item()
+        if not item:
+            messagebox.showinfo("Arrhenius", "Select a layer to apply Arrhenius parameters.", parent=self)
+            return
+        try:
+            T = float(self.arrhenius_vars["T"].get())
+            D0 = float(self.arrhenius_vars["D0"].get())
+            Ea = float(self.arrhenius_vars["Ea"].get())
+        except ValueError:
+            messagebox.showerror("Arrhenius", "Provide numeric Temperature, D0, and Ea values.", parent=self)
+            return
+        if T <= 0 or D0 <= 0:
+            messagebox.showerror("Arrhenius", "Temperature and D0 must be positive.", parent=self)
+            return
+        D = D0 * math.exp(-Ea / (ARRHENIUS_R * T))
+        self.entry_vars["diffusivity"].set(f"{D:.6g}")
+        self._update()
+        self._notify_layers_changed()
 
     def _layer_from_entries(self) -> LayerParam:
         try:
@@ -260,6 +322,13 @@ class LayerTable(ttk.Frame):
             )
         return layers
 
+    def get_layer_names(self) -> List[str]:
+        return [self.tree.item(item, "values")[0] for item in self.tree.get_children()]
+
+    def _notify_layers_changed(self) -> None:
+        if self._on_layers_changed is not None:
+            self._on_layers_changed()
+
 
 class App(tk.Tk):
     def __init__(self) -> None:
@@ -274,6 +343,7 @@ class App(tk.Tk):
         self._suppress_time_callback = False
         self._progress_value = tk.DoubleVar(value=0.0)
         self._manual_window: Optional[tk.Toplevel] = None
+        self.selected_flux = tk.StringVar(value="Target interface")
 
         self.frm_left = ttk.Frame(self, padding=6)
         self.frm_right = ttk.Frame(self, padding=6)
@@ -291,6 +361,12 @@ class App(tk.Tk):
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.toolbar = NavigationToolbar2Tk(self.canvas, self.frm_right)
         self.toolbar.update()
+        self._flux_visibility_map = {
+            "Surface (x=0)": ("line_J_surface", "line_cum_surface"),
+            "Target interface": ("line_J_target", "line_cum_target"),
+            "Exit (x=L)": ("line_J_exit", "line_cum_exit"),
+            "Probe (custom)": ("line_J_probe", "line_cum_probe"),
+        }
 
         self.time_label = ttk.Label(self.frm_right, text="Time [s]: 0.0")
         self.time_label.pack(fill=tk.X, pady=(8, 0))
@@ -329,6 +405,18 @@ class App(tk.Tk):
         self.btn_time_next = ttk.Button(time_ctrl, text="▶", width=3, command=lambda: self._step_time(1), state="disabled")
         self.btn_time_next.pack(side=tk.LEFT, padx=2)
 
+    def _refresh_probe_layers(self) -> None:
+        if not hasattr(self, "probe_layer"):
+            return
+        names = self.layer_table.get_layer_names()
+        self.probe_layer["values"] = names
+        current = self.probe_layer.get()
+        if names:
+            if current not in names:
+                self.probe_layer.set(names[0])
+        else:
+            self.probe_layer.set("")
+
     def _build_inputs(self, parent: tk.Widget) -> None:
         defaults = Defaults()
 
@@ -359,7 +447,7 @@ class App(tk.Tk):
         self.cmb_bc.pack(fill=tk.X, pady=2)
 
         ttk.Label(parent, text="Layers (top to bottom)").pack(anchor=tk.W, pady=(8, 0))
-        self.layer_table = LayerTable(parent, list(defaults.layers))
+        self.layer_table = LayerTable(parent, list(defaults.layers), on_layers_changed=self._refresh_probe_layers)
         self.layer_table.pack(fill=tk.BOTH, expand=True, pady=4)
 
         btn_bar = ttk.Frame(parent)
@@ -386,15 +474,62 @@ class App(tk.Tk):
             wraplength=260,
         ).pack(fill=tk.X, pady=(6, 0))
 
+        probe_frame = ttk.Labelframe(parent, text="Flux probe (optional)")
+        probe_frame.pack(fill=tk.X, pady=(8, 0))
+
+        row0 = ttk.Frame(probe_frame)
+        row0.pack(fill=tk.X, pady=2)
+        ttk.Label(row0, text="Position [m]").pack(side=tk.LEFT, padx=2)
+        self.probe_var = tk.StringVar(value="")
+        ttk.Entry(row0, textvariable=self.probe_var, width=14).pack(side=tk.LEFT, padx=2)
+        ttk.Button(row0, text="Plot", command=self._on_probe_update).pack(side=tk.LEFT, padx=4)
+
+        row1 = ttk.Frame(probe_frame)
+        row1.pack(fill=tk.X, pady=2)
+        ttk.Label(row1, text="Layer").pack(side=tk.LEFT, padx=2)
+        self.probe_layer = ttk.Combobox(row1, state="readonly", width=18)
+        self.probe_layer.pack(side=tk.LEFT, padx=2)
+        ttk.Button(row1, text="Plot layer center", command=self._on_probe_layer).pack(side=tk.LEFT, padx=4)
+        self._refresh_probe_layers()
+
+        flux_select = ttk.Frame(parent)
+        flux_select.pack(fill=tk.X, pady=(10, 0))
+        ttk.Label(flux_select, text="Flux view").pack(side=tk.LEFT, padx=2)
+        self.cmb_flux = ttk.Combobox(
+            flux_select,
+            textvariable=self.selected_flux,
+            state="readonly",
+            values=[
+                "Surface (x=0)",
+                "Target interface",
+                "Exit (x=L)",
+                "Probe (custom)",
+            ],
+            width=18,
+        )
+        self.cmb_flux.pack(side=tk.LEFT, padx=4)
+        self.cmb_flux.bind("<<ComboboxSelected>>", lambda _event: self._on_flux_selection())
+
+        self.flux_value_label = ttk.Label(parent, text="Flux: -, Cum: -", foreground="gray25", justify=tk.LEFT, wraplength=260)
+        self.flux_value_label.pack(fill=tk.X, pady=(4, 0))
+        self._update_flux_value_label()
+
     def _gather_params(self) -> Optional[SimParams]:
         try:
             layers = self.layer_table.get_layers()
+            probe_position = None
+            probe_text = self.probe_var.get().strip()
+            if probe_text:
+                probe_position = float(probe_text)
+                if probe_position < 0:
+                    raise ValueError("Probe position must be non-negative.")
             params = SimParams(
                 layers=layers,
                 Cs=self.vars["Cs"].get(),
                 dt=self.vars["dt"].get(),
                 t_max=self.vars["t_max"].get(),
                 bc_right=self.bc_right.get(),
+                probe_position=probe_position,
             )
             validate_params(params)
         except ValueError as exc:
@@ -459,18 +594,17 @@ class App(tk.Tk):
         if not self.results:
             return
         r = self.results
-        update_flux_axes(
-            self.artists,
-            r["t"],
-            r["J_source"],
-            r["J_target"],
-            r["J_end"],
-            r["cum_target"],
-            r["mass_target"],
-        )
+        self._refresh_probe_layers()
         self._configure_time_controls(len(r["t"]) - 1)
         self._set_time_index(0)
-        self.canvas.draw_idle()
+        probe_text = self.probe_var.get().strip()
+        if probe_text:
+            try:
+                position = float(probe_text)
+                self._compute_probe_flux(position)
+            except ValueError:
+                pass
+        self._refresh_flux_plot()
 
     def _report_progress(self, value: float) -> None:
         def update() -> None:
@@ -478,6 +612,144 @@ class App(tk.Tk):
             self._progress_value.set(clamped)
 
         self.after(0, update)
+
+    def _refresh_flux_plot(self) -> None:
+        if not self.results:
+            return
+        r = self.results
+        update_flux_axes(
+            self.artists,
+            r["t"],
+            r["J_source"],
+            r["J_target"],
+            r["J_end"],
+            r["cum_source"],
+            r["cum_target"],
+            r["cum_end"],
+            r["mass_target"],
+            J_probe=r.get("J_probe"),
+            cum_probe=r.get("cum_probe"),
+        )
+        self._apply_flux_visibility()
+        self._autoscale_flux_axes()
+        self._update_flux_value_label()
+        self.canvas.draw_idle()
+
+    def _on_flux_selection(self) -> None:
+        self._apply_flux_visibility()
+        self._autoscale_flux_axes()
+        self._update_flux_value_label()
+
+    def _apply_flux_visibility(self) -> None:
+        selection = self.selected_flux.get()
+        flux_key, cum_key = self._flux_visibility_map.get(selection, (None, None))
+
+        for key in ["line_J_surface", "line_J_target", "line_J_exit", "line_J_probe"]:
+            line = self.artists[key]
+            visible = key == flux_key and len(line.get_xdata()) > 0
+            line.set_visible(visible)
+
+        for key in ["line_cum_surface", "line_cum_target", "line_cum_exit", "line_cum_probe"]:
+            line = self.artists[key]
+            visible = key == cum_key and len(line.get_xdata()) > 0
+            line.set_visible(visible)
+
+        self.artists["line_mass_target"].set_visible(selection == "Target interface")
+        self._update_flux_legend()
+
+    def _update_flux_value_label(self) -> None:
+        if not hasattr(self, "flux_value_label"):
+            return
+        if not self.results:
+            self.flux_value_label.configure(text="Flux: -, Cum: -")
+            return
+
+        mapping = {
+            "Surface (x=0)": ("J_source", "cum_source"),
+            "Target interface": ("J_target", "cum_target"),
+            "Exit (x=L)": ("J_end", "cum_end"),
+            "Probe (custom)": ("J_probe", "cum_probe"),
+        }
+        flux_key, cum_key = mapping.get(self.selected_flux.get(), (None, None))
+        idx = min(self._current_time_index, len(self.results["t"]) - 1)
+
+        def _value(arr_key):
+            if not arr_key:
+                return None
+            arr = self.results.get(arr_key)
+            if arr is None or len(arr) <= idx:
+                return None
+            return float(arr[idx])
+
+        flux_val = _value(flux_key)
+        cum_val = _value(cum_key)
+        mass_val = _value("mass_target") if self.selected_flux.get() == "Target interface" else None
+
+        flux_txt = "Flux: -" if flux_val is None else f"Flux: {flux_val:.6e} mol/(m^2·s)"
+        cum_txt = "Cum: -" if cum_val is None else f"Cum: {cum_val:.6e} mol/m^2"
+        mass_txt = "" if mass_val is None else f" | Mass target: {mass_val:.6e} mol/m^2"
+
+        self.flux_value_label.configure(text=f"{flux_txt}, {cum_txt}{mass_txt}")
+
+    def _update_flux_legend(self) -> None:
+        legend = self.artists.get("ax_flux_legend")
+        if legend is not None:
+            legend.remove()
+
+        ax = self.artists["ax_flux"]
+        line_keys = self.artists.get("flux_line_keys", []) + self.artists.get("flux_cum_keys", [])
+        lines = []
+        labels = []
+        for key in line_keys:
+            line = self.artists.get(key)
+            if line is None:
+                continue
+            if line.get_visible() and len(line.get_xdata()) > 0:
+                lines.append(line)
+                labels.append(line.get_label())
+
+        if lines:
+            legend = ax.legend(lines, labels, loc="best")
+            self.artists["ax_flux_legend"] = legend
+        else:
+            self.artists["ax_flux_legend"] = None
+
+    def _autoscale_flux_axes(self) -> None:
+        if not self.results:
+            return
+        t = self.results["t"]
+        if t.size == 0:
+            return
+
+        ax_flux = self.artists["ax_flux"]
+        ax_flux_secondary = self.artists["ax_flux_secondary"]
+        ax_flux.set_xlim(t[0], t[-1])
+        ax_flux_secondary.set_xlim(t[0], t[-1])
+
+        def _autoscale_axis(axis, keys):
+            ys = []
+            for key in keys:
+                line = self.artists.get(key)
+                if line is None or not line.get_visible():
+                    continue
+                data = line.get_ydata()
+                if len(data):
+                    ys.append(data)
+            if ys:
+                ymin = min(float(np.min(arr)) for arr in ys)
+                ymax = max(float(np.max(arr)) for arr in ys)
+                if not np.isfinite(ymin) or not np.isfinite(ymax):
+                    return
+                if ymin == ymax:
+                    margin = abs(ymin) * 0.05 + 1e-9
+                    ymin -= margin
+                    ymax += margin
+                axis.set_ylim(ymin, ymax)
+
+        flux_keys = self.artists.get("flux_line_keys", [])
+        cum_keys = self.artists.get("flux_cum_keys", [])
+        _autoscale_axis(ax_flux, flux_keys)
+        _autoscale_axis(ax_flux_secondary, cum_keys)
 
     def _show_completion_dialog(self, result: dict) -> None:
         msg = "Simulation complete."
@@ -502,6 +774,7 @@ class App(tk.Tk):
         t_val = float(r["t"][idx])
         update_profile_axes(self.artists, r["x"], r["C_xt"][idx], r["layer_boundaries"])
         self.time_label.configure(text=f"Time [s]: {t_val:.6g}")
+        self._update_flux_value_label()
         self.canvas.draw_idle()
 
     def _export_profile(self) -> None:
@@ -568,6 +841,107 @@ class App(tk.Tk):
             return
         self._set_time_index(self._current_time_index + delta)
 
+    def _on_probe_update(self) -> None:
+        if not self.results:
+            messagebox.showinfo("Flux probe", "Run a simulation first.", parent=self)
+            return
+        text = self.probe_var.get().strip()
+        if not text:
+            self.results.pop("J_probe", None)
+            self.results.pop("cum_probe", None)
+            self.results.pop("probe_position", None)
+            if self.selected_flux.get() == "Probe (custom)":
+                self.selected_flux.set("Target interface")
+            self._refresh_flux_plot()
+            return
+        try:
+            position = float(text)
+        except ValueError:
+            messagebox.showerror("Flux probe", "Provide a numeric position in meters.", parent=self)
+            return
+        if position < 0:
+            messagebox.showerror("Flux probe", "Position must be within the stack (≥ 0).", parent=self)
+            return
+        if not self._compute_probe_flux(position):
+            return
+        self._refresh_flux_plot()
+
+    def _compute_probe_flux(self, position: float) -> bool:
+        if not self.results:
+            return False
+        r = self.results
+        x = r["x"]
+        if position > x[-1]:
+            messagebox.showerror(
+                "Flux probe",
+                f"Position exceeds stack length ({x[-1]:.6g} m).",
+                parent=self,
+            )
+            return False
+        if position == x[-1]:
+            messagebox.showinfo(
+                "Flux probe",
+                "Probe coincides with the stack exit; use J_end instead.",
+                parent=self,
+            )
+            return False
+
+        idx = int(np.searchsorted(x, position, side="left"))
+        if idx == 0:
+            interval = 0
+        else:
+            if np.isclose(position, x[idx]):
+                interval = idx - 1
+            else:
+                interval = idx - 1
+        interval = max(0, min(interval, len(x) - 2))
+
+        dx = x[interval + 1] - x[interval]
+        if dx <= 0:
+            messagebox.showerror("Flux probe", "Degenerate interval encountered.", parent=self)
+            return False
+
+        D_edges = r.get("D_edges")
+        if D_edges is None:
+            messagebox.showerror("Flux probe", "Diffusivity data unavailable for probe computation.", parent=self)
+            return False
+
+        C_xt = r["C_xt"]
+        gradient = (C_xt[:, interval + 1] - C_xt[:, interval]) / dx
+        J_probe = -D_edges[interval] * gradient
+        cum_probe = cumulative_trapz(J_probe, r["t"]) if len(r["t"]) > 1 else np.zeros_like(J_probe)
+
+        self.results["J_probe"] = J_probe
+        self.results["cum_probe"] = cum_probe
+        self.results["probe_position"] = position
+        if self.selected_flux.get() != "Probe (custom)":
+            self.selected_flux.set("Probe (custom)")
+        return True
+
+    def _on_probe_layer(self) -> None:
+        if not self.results:
+            messagebox.showinfo("Flux probe", "Run a simulation first.", parent=self)
+            return
+        name = self.probe_layer.get().strip()
+        if not name:
+            messagebox.showinfo("Flux probe", "Select a layer name.", parent=self)
+            return
+        layer_names = self.results.get("layer_names")
+        boundaries = self.results.get("layer_boundaries")
+        if layer_names is None or boundaries is None:
+            messagebox.showerror("Flux probe", "Layer boundary data unavailable.", parent=self)
+            return
+        if name not in layer_names:
+            messagebox.showerror("Flux probe", f"Layer '{name}' not found in results.", parent=self)
+            return
+        idx = layer_names.index(name)
+        start = boundaries[idx]
+        end = boundaries[idx + 1]
+        midpoint = 0.5 * (start + end)
+        self.probe_var.set(f"{midpoint:.6g}")
+        if self._compute_probe_flux(midpoint):
+            self._refresh_flux_plot()
+
     def _show_manual(self) -> None:
         if self._manual_window is not None:
             try:
@@ -614,25 +988,31 @@ class App(tk.Tk):
             self._manual_window = None
 
     def _manual_text_fallback(self) -> str:
-        return (
-            "Diffusion–Reaction Simulator\n\n"
-            "Governing equation:\n"
-            "  ∂C/∂t = ∂/∂x ( D(x) ∂C/∂x ) − k(x) C\n\n"
-            "Input constraints:\n"
-            "  • At least one layer (final layer is the absorbing target).\n"
-            "  • Thickness > 0, diffusivity > 0, reaction rate ≥ 0, nodes ≥ 2.\n"
-            "  • Cs ≥ 0, Δt > 0, and Δt < t_max.\n\n"
-            "Usage:\n"
-            "  • Configure layers (top→bottom) with thickness, diffusivity, reaction rate, nodes.\n"
-            "  • Set surface concentration Cs, Δt, and total time.\n"
-            "  • Choose right boundary (Dirichlet sink or Neumann impermeable).\n"
-            "  • Run the simulation and inspect flux, cumulative uptake, and profiles.\n"
-            "  • Export flux histories (CSV/NPZ) or the current profile (CSV).\n\n"
-            "Key fluxes:\n"
-            "  J_source = −D ∂C/∂x |_(x=0)\n"
-            "  J_target = flux into the final layer\n"
-            "  mass_target(t) = ∫_{target} C(x,t) dx\n"
-        )
+        return textwrap.dedent("""
+Diffusion–Reaction Simulator
+
+Governing equation:
+  ∂C/∂t = ∂/∂x ( D(x) ∂C/∂x ) − k(x) C
+
+Input constraints:
+  • At least one layer (final row is the reporting layer).
+  • Thickness > 0, diffusivity > 0, reaction rate ≥ 0, nodes ≥ 2.
+  • Cs ≥ 0, Δt > 0, and Δt < t_max.
+
+Usage:
+  • Configure layers (top→bottom) with thickness, diffusivity, reaction rate, nodes.
+  • Use Arrhenius helper (T, D0, Ea) if you want D computed automatically.
+  • Choose right boundary (Dirichlet sink or Neumann impermeable).
+  • Run the simulation and inspect flux, cumulative uptake, and profiles.
+  • Use the Flux view dropdown to focus on surface/target/exit/probe curves.
+  • Export flux histories (CSV/NPZ), the concentration matrix, or a single profile.
+
+Key metrics:
+  • Flux @ surface, Flux into reporting interface, Flux @ exit, Flux @ probe
+  • Cumulated flux for each location
+  • Mass in reporting layer = ∫_{reporting} C(x,t) dx
+""")
+
 
     def _populate_equation_panel(self, parent: tk.Widget) -> None:
         fig = Figure(figsize=(6.5, 3.0), dpi=100)
@@ -702,6 +1082,11 @@ class App(tk.Tk):
             cum_end=r["cum_end"],
             mass_target=r["mass_target"],
             layer_boundaries=r["layer_boundaries"],
+            D_nodes=r.get("D_nodes"),
+            D_edges=r.get("D_edges"),
+            J_probe=r.get("J_probe"),
+            cum_probe=r.get("cum_probe"),
+            probe_position=r.get("probe_position"),
         )
         save_csv_flux(
             base,
@@ -713,11 +1098,18 @@ class App(tk.Tk):
             r["cum_target"],
             r["cum_end"],
             r["mass_target"],
+            J_probe=r.get("J_probe"),
+            cum_probe=r.get("cum_probe"),
         )
+        save_profiles_matrix(base, r["x"], r["t"], r["C_xt"])
         if self.last_params:
             save_metadata(
                 base,
                 self.last_params,
                 extras={"layer_boundaries": r["layer_boundaries"].tolist()},
             )
-        messagebox.showinfo("Export", "Saved results.npz and flux_vs_time.csv", parent=self)
+        messagebox.showinfo(
+            "Export",
+            "Saved results.npz, flux_vs_time.csv, and concentration_profiles.csv",
+            parent=self,
+        )

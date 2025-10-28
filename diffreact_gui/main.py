@@ -11,6 +11,7 @@ from .utils import (
     ensure_results_dir,
     save_csv_flux,
     save_metadata,
+    save_profiles_matrix,
     save_results_npz,
     setup_logging,
 )
@@ -64,6 +65,11 @@ def run_cli(debug: bool = False) -> None:
         cum_end=res["cum_end"],
         mass_target=res["mass_target"],
         layer_boundaries=res["layer_boundaries"],
+        D_nodes=res.get("D_nodes"),
+        D_edges=res.get("D_edges"),
+        J_probe=res.get("J_probe"),
+        cum_probe=res.get("cum_probe"),
+        probe_position=params.probe_position,
     )
     csv = save_csv_flux(
         base,
@@ -75,7 +81,10 @@ def run_cli(debug: bool = False) -> None:
         res["cum_target"],
         res["cum_end"],
         res["mass_target"],
+        J_probe=res.get("J_probe"),
+        cum_probe=res.get("cum_probe"),
     )
+    save_profiles_matrix(base, res["x"], res["t"], res["C_xt"])
     save_metadata(base, params, extras={"layer_boundaries": res["layer_boundaries"].tolist()})
     log.info("Saved: %s, %s", npz, csv)
     if debug:

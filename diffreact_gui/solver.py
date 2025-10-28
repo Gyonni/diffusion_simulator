@@ -349,6 +349,8 @@ def run_simulation(
                 "layer_names": [layer.name for layer in layers],
                 "diagnostics": diagnostics,
                 "k_profile": k_nodes,
+                "D_nodes": D_nodes,
+                "D_edges": D_edges,
                 "target_indices": {
                     "start_inclusive": target_start_inclusive,
                     "end": target_end,
