@@ -7,11 +7,25 @@ Multilayer 1D diffusion–reaction simulator with a Tkinter GUI and Crank–Nico
 - Python 3.10+
 - Packages: `numpy`, `matplotlib` (Tkinter ships with CPython)
 
-Install dependencies:
+### Quick Install
 
 ```bash
-python -m pip install numpy matplotlib
+# Using requirements.txt (recommended)
+pip install -r requirements.txt
+
+# Or install manually
+pip install numpy matplotlib
 ```
+
+### Development Setup
+
+For development with testing and build tools:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+See [SETUP.md](SETUP.md) for detailed environment setup instructions.
 
 ## Running the simulator
 
@@ -59,8 +73,46 @@ pytest -q
 
 ## Packaging
 
-Create a single-file executable (Windows example):
+### Building a standalone executable (Windows)
 
+**Prerequisites**: Make sure you're in a virtual environment with PyInstaller installed.
+
+1. Set up environment (first time only):
 ```bash
-pyinstaller --onefile --noconsole --name DiffReactGUI run_diffreact_gui.py
+# Create virtual environment
+python -m venv venv
+
+# Activate it
+venv\Scripts\activate  # Windows
+source venv/bin/activate  # Linux/macOS
+
+# Install dependencies
+pip install -r requirements-dev.txt
 ```
+
+2. Clean previous builds (if any):
+```bash
+python -c "import shutil; shutil.rmtree('build', ignore_errors=True); shutil.rmtree('dist', ignore_errors=True)"
+```
+
+3. Build the executable:
+```bash
+python -m PyInstaller --onefile --noconsole --name DiffReactGUI run_diffreact_gui.py
+```
+
+4. The executable will be created in `dist/DiffReactGUI.exe` (approximately 40 MB)
+
+**Important**: Always use `python -m PyInstaller` instead of `pyinstaller` directly to avoid path issues.
+
+### Troubleshooting
+
+Common issues and solutions:
+
+| Issue | Solution |
+|-------|----------|
+| "No Python at ..." error | Activate virtual environment and use `python -m PyInstaller` |
+| "Unable to create process" | Reinstall PyInstaller: `pip uninstall pyinstaller && pip install pyinstaller` |
+| Module not found errors | Clean build directories and rebuild |
+| Version conflicts | Use a fresh virtual environment |
+
+See [PYINSTALLER_GUIDE.md](PYINSTALLER_GUIDE.md) for detailed troubleshooting.

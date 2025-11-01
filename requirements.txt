@@ -1,0 +1,11 @@
+# Core dependencies for Diffusion-Reaction GUI Simulator
+# Install with: pip install -r requirements.txt
+
+# Numerical computation
+numpy>=1.24.0,<2.0.0
+
+# Plotting and visualization
+matplotlib>=3.7.0,<4.0.0
+
+# Note: tkinter is included with standard Python distributions
+# If tkinter is missing, install python3-tk on Linux or reinstall Python on Windows/Mac

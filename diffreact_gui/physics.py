@@ -7,41 +7,86 @@ All functions use SI units.
 import math
 from typing import Literal
 
+# Physical constants
+EPSILON_K = 1e-30  # Small value to prevent division by zero
+
 
 def char_length_ell(D: float, k: float) -> float:
-    """Return characteristic length ell = sqrt(D/k). For k=0, return math.inf."""
+    """Return characteristic penetration length ell = sqrt(D/k).
+
+    Args:
+        D: Diffusion coefficient [m^2/s]
+        k: Reaction rate constant [1/s]
+
+    Returns:
+        Characteristic length [m], or math.inf if k <= 0
+    """
     if k <= 0:
         return math.inf
     return math.sqrt(D / k)
 
 
 def damkohler_number(L: float, D: float, k: float) -> float:
-    """Return Da = L / ell."""
+    """Return Damköhler number Da = L / ell.
+
+    Args:
+        L: Film thickness [m]
+        D: Diffusion coefficient [m^2/s]
+        k: Reaction rate constant [1/s]
+
+    Returns:
+        Dimensionless Damköhler number
+    """
     ell = char_length_ell(D, k)
     if math.isinf(ell):
         return 0.0
     return L / ell
 
 
-def steady_flux(D: float, k: float, L: float, Cs: float, bc_right: Literal["Neumann", "Dirichlet"]) -> float:
-    """Analytical steady-state flux at x=0 for select BCs.
+def steady_flux(
+    D: float,
+    k: float,
+    L: float,
+    Cs: float,
+    bc_right: Literal["Neumann", "Dirichlet"]
+) -> float:
+    """Analytical steady-state flux at x=0 for specified boundary conditions.
 
-    For Dirichlet at x=0 (C=Cs) and:
-    - Neumann at x=L: J = (D/ell) * Cs * tanh(L/ell)
-    - Dirichlet at x=L (perfect sink): J = (D/ell) * Cs * coth(L/ell)
+    Args:
+        D: Diffusion coefficient [m^2/s]
+        k: Reaction rate constant [1/s]
+        L: Film thickness [m]
+        Cs: Surface concentration [mol/m^3]
+        bc_right: Right boundary condition type
 
-    For k=0, use limits:
-    - Neumann: J = D * Cs * (0) / L -> approaches 0 as steady state is uniform Cs
-    - Dirichlet: J = D * Cs / L
+    Returns:
+        Steady-state flux at x=0 [mol/(m^2·s)]
+
+    Notes:
+        For Dirichlet at x=0 (C=Cs) and:
+        - Neumann at x=L: J = (D/ell) * Cs * tanh(L/ell)
+        - Dirichlet at x=L (perfect sink): J = (D/ell) * Cs * coth(L/ell)
+
+        For k=0 (pure diffusion):
+        - Neumann: J -> 0 (steady state is uniform Cs)
+        - Dirichlet: J = D * Cs / L
+
+    Raises:
+        ValueError: If bc_right is not 'Neumann' or 'Dirichlet'
     """
     ell = char_length_ell(D, k)
+
+    # Pure diffusion case (k=0)
     if math.isinf(ell):
         if bc_right == "Neumann":
             return 0.0
-        # Dirichlet perfect sink with k=0
-        return D * Cs / L
+        elif bc_right == "Dirichlet":
+            return D * Cs / L
+        else:
+            raise ValueError(f"Unsupported bc_right: {bc_right}")
 
     Da = L / ell
+
     if bc_right == "Neumann":
         return (D / ell) * Cs * math.tanh(Da)
     elif bc_right == "Dirichlet":
@@ -50,5 +95,5 @@ def steady_flux(D: float, k: float, L: float, Cs: float, bc_right: Literal["Neum
             return (D / ell) * Cs * (1.0 / Da)
         return (D / ell) * Cs / math.tanh(Da)
     else:
-        raise ValueError("Unsupported bc_right for steady_flux")
+        raise ValueError(f"Unsupported bc_right: {bc_right}")
 

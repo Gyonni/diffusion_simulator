@@ -18,6 +18,15 @@ from .models import LayerParam
 
 @dataclass(frozen=True)
 class Defaults:
+    """Default simulation parameters for the GUI.
+
+    Attributes:
+        Cs: Surface concentration [mol/m^3]
+        dt: Time step [s]
+        t_max: Total simulation time [s]
+        bc_right: Right boundary condition ('Neumann' or 'Dirichlet')
+        layers: Tuple of layer specifications (top to bottom)
+    """
     Cs: float = 1.0
     dt: float = 1e-3
     t_max: float = 0.5
@@ -40,5 +49,8 @@ class Defaults:
     )
 
 
+# Directory for simulation outputs
 RESULTS_DIR = "results"
+
+# Logging configuration
 LOG_LEVEL = "INFO"

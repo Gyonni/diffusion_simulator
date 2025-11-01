@@ -54,14 +54,35 @@ def cumulative_trapz(y: np.ndarray, x: np.ndarray) -> np.ndarray:
     """Return cumulative trapezoidal integral of y(x).
 
     Parameters
-    - y: shape (N,) array
-    - x: shape (N,) array, strictly increasing
+    ----------
+    y : np.ndarray
+        Shape (N,) array of function values
+    x : np.ndarray
+        Shape (N,) array, must be strictly increasing
+
+    Returns
+    -------
+    np.ndarray
+        Cumulative integral array of same shape as y
+
+    Raises
+    ------
+    ValueError
+        If y and x shapes don't match or if x is not strictly increasing
     """
     if y.shape != x.shape:
-        raise ValueError("y and x must have the same shape")
+        raise ValueError(f"Shape mismatch: y.shape={y.shape}, x.shape={x.shape}")
+    if len(x) > 1 and np.any(np.diff(x) <= 0):
+        raise ValueError("x array must be strictly increasing")
+
     out = np.zeros_like(y)
-    for i in range(1, len(y)):
-        out[i] = out[i - 1] + 0.5 * (y[i] + y[i - 1]) * (x[i] - x[i - 1])
+    if len(y) <= 1:
+        return out
+
+    # Vectorized computation for better performance
+    dx = np.diff(x)
+    avg_y = 0.5 * (y[1:] + y[:-1])
+    out[1:] = np.cumsum(avg_y * dx)
     return out
 
 

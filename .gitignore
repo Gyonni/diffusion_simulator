@@ -1,16 +1,40 @@
+# Python cache
 __pycache__/
 .pytest_cache/
 .mypy_cache/
 *.pyc
 *.pyo
 *.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+virtualenv/
+
+# Build artifacts
 dist/
 build/
 *.spec
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Results and outputs
 results/
 logs/
 *.npz
 *.csv
 *.png
 *.pdf
+
+# OS
+.DS_Store
+Thumbs.db
 

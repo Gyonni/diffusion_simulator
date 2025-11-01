@@ -13,26 +13,48 @@ from .utils import cumulative_trapz
 
 logger = logging.getLogger(__name__)
 
+# Numerical stability constants
+ZERO_PIVOT_TOLERANCE = 1e-14
+STABILITY_FACTOR = 0.45
+MIN_DT_FACTOR = 1e-9
+DT_REDUCTION_FACTOR = 1e-6
+DT_HALVING_FACTOR = 0.5
+MASS_BALANCE_TOLERANCE = 0.01
+EPSILON_SMALL = 1e-12
+EPSILON_DIFFUSIVITY = 1e-30
+
 
 class TridiagonalSolveError(np.linalg.LinAlgError):
     """Raised when the tridiagonal solver encounters a singular pivot."""
 
 
 def _thomas_solve(a: np.ndarray, b: np.ndarray, c: np.ndarray, d: np.ndarray) -> np.ndarray:
-    """Solve a tridiagonal linear system using the Thomas algorithm."""
+    """Solve a tridiagonal linear system using the Thomas algorithm.
 
+    Args:
+        a: Lower diagonal coefficients
+        b: Main diagonal coefficients
+        c: Upper diagonal coefficients
+        d: Right-hand side vector
+
+    Returns:
+        Solution vector x
+
+    Raises:
+        TridiagonalSolveError: If a zero pivot is encountered
+    """
     n = len(b)
     cp = np.empty_like(c)
     dp = np.empty_like(d)
 
-    if abs(b[0]) < 1e-14:
+    if abs(b[0]) < ZERO_PIVOT_TOLERANCE:
         raise TridiagonalSolveError("Zero pivot at first row")
     cp[0] = c[0] / b[0]
     dp[0] = d[0] / b[0]
 
     for i in range(1, n):
         denom = b[i] - a[i] * cp[i - 1]
-        if abs(denom) < 1e-14:
+        if abs(denom) < ZERO_PIVOT_TOLERANCE:
             raise TridiagonalSolveError(f"Zero pivot at row {i}")
         cp[i] = c[i] / denom if i < n - 1 else 0.0
         dp[i] = (d[i] - a[i] * dp[i - 1]) / denom
@@ -45,6 +67,15 @@ def _thomas_solve(a: np.ndarray, b: np.ndarray, c: np.ndarray, d: np.ndarray) ->
 
 
 def _harmonic_mean(a: float, b: float) -> float:
+    """Compute harmonic mean of two values.
+
+    Args:
+        a: First value
+        b: Second value
+
+    Returns:
+        Harmonic mean: 2ab/(a+b), or a if a==b, or 0 if both are zero
+    """
     if a == b:
         return a
     denom = a + b
@@ -98,7 +129,18 @@ def _build_grid(layers: List[LayerParam]) -> Tuple[np.ndarray, np.ndarray, np.nd
 
 
 def _compute_edge_diffusivity(D_nodes: np.ndarray) -> np.ndarray:
-    return np.array([_harmonic_mean(D_nodes[i], D_nodes[i + 1]) for i in range(len(D_nodes) - 1)], dtype=float)
+    """Compute edge-centered diffusivities using harmonic mean.
+
+    Args:
+        D_nodes: Diffusivity values at grid nodes
+
+    Returns:
+        Edge-centered diffusivity array (length N-1)
+    """
+    return np.array(
+        [_harmonic_mean(D_nodes[i], D_nodes[i + 1]) for i in range(len(D_nodes) - 1)],
+        dtype=float
+    )
 
 
 def _assemble_system(
@@ -231,10 +273,10 @@ def run_simulation(
     if dx_all.size > 0:
         D_edges_nominal = _compute_edge_diffusivity(D_nodes)
         with np.errstate(divide="ignore", invalid="ignore"):
-            ratio = (dx_all ** 2) / np.maximum(D_edges_nominal, 1e-30)
+            ratio = (dx_all ** 2) / np.maximum(D_edges_nominal, EPSILON_DIFFUSIVITY)
         finite_ratio = ratio[np.isfinite(ratio) & (ratio > 0)]
         if finite_ratio.size > 0:
-            recommended_dt = 0.45 * float(np.min(finite_ratio))
+            recommended_dt = STABILITY_FACTOR * float(np.min(finite_ratio))
             if dt > recommended_dt:
                 logger.warning(
                     "Time step %.3e exceeds stability recommendation %.3e based on spatial resolution; clamping.",
@@ -357,11 +399,8 @@ def run_simulation(
                 },
             }
 
-            if progress_callback is not None:
-                progress_callback(1.0)
-
         except (TridiagonalSolveError, np.linalg.LinAlgError) as exc:
-            dt_min = max(1e-9, 1e-6 * t_max)
+            dt_min = max(MIN_DT_FACTOR, DT_REDUCTION_FACTOR * t_max)
             if current_dt <= dt_min or attempts > max_retries:
                 logger.error("Solver failed after %d attempts: %s", attempts, exc)
                 raise
@@ -370,7 +409,7 @@ def run_simulation(
                 attempts,
                 exc,
             )
-            current_dt *= 0.5
+            current_dt *= DT_HALVING_FACTOR
 
 
 def mass_balance_diagnostics(
@@ -399,10 +438,9 @@ def mass_balance_diagnostics(
         abs(int_J_source),
         abs(int_J_end),
         abs(int_kC),
-        1e-12,
+        EPSILON_SMALL,
     )
-    denom = scale
-    rel_error = abs(residual) / denom
+    rel_error = abs(residual) / scale
 
     components = {
         "int_J_source": float(int_J_source),

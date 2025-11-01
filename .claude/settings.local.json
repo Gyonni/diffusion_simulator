@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python run_tests.py:*)",
+      "Bash(python -m diffreact_gui.main:*)",
+      "Bash(python -m pip:*)",
+      "Bash(findstr:*)",
+      "Bash(python -m PyInstaller:*)",
+      "Bash(dir distDiffReactGUI.exe)",
+      "Bash(dir:*)",
+      "Bash(python:*)",
+      "Bash(where:*)",
+      "Bash(if exist build rmdir /s /q build)",
+      "Bash(if exist dist rmdir /s /q dist)",
+      "Bash(if exist DiffReactGUI.spec del /q DiffReactGUI.spec)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

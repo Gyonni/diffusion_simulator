@@ -2,13 +2,14 @@ from __future__ import annotations
 
 """Matplotlib plotting helpers for the GUI."""
 
-from typing import Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.lines import Line2D
 
 
-def create_figures() -> Tuple[plt.Figure, Dict[str, any]]:
+def create_figures() -> Tuple[plt.Figure, Dict[str, Any]]:
     fig, (ax_flux, ax_prof) = plt.subplots(2, 1, figsize=(9, 7), sharex=False)
     fig.subplots_adjust(hspace=0.35)
 
@@ -78,7 +79,7 @@ def create_figures() -> Tuple[plt.Figure, Dict[str, any]]:
 
 
 def update_flux_axes(
-    artists: Dict[str, any],
+    artists: Dict[str, Any],
     t: np.ndarray,
     J_surface: np.ndarray,
     J_target: np.ndarray,
@@ -123,7 +124,7 @@ def update_flux_axes(
 
 
 def update_profile_axes(
-    artists: Dict[str, any],
+    artists: Dict[str, Any],
     x: np.ndarray,
     C: np.ndarray,
     boundaries: np.ndarray,
