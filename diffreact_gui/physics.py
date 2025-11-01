@@ -9,6 +9,24 @@ from typing import Literal
 
 # Physical constants
 EPSILON_K = 1e-30  # Small value to prevent division by zero
+KB_EV = 8.617333262e-5  # Boltzmann constant [eV/K]
+
+
+def calculate_diffusivity_arrhenius(D0: float, Ea: float, T: float) -> float:
+    """Calculate diffusivity using Arrhenius equation.
+
+    Args:
+        D0: Pre-exponential factor [m^2/s]
+        Ea: Activation energy [eV]
+        T: Temperature [K]
+
+    Returns:
+        Diffusivity D = D0 * exp(-Ea/(kb*T)) [m^2/s]
+
+    Notes:
+        Uses Boltzmann constant kb = 8.617333262e-5 eV/K
+    """
+    return D0 * math.exp(-Ea / (KB_EV * T))
 
 
 def char_length_ell(D: float, k: float) -> float:

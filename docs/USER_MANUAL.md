@@ -45,12 +45,12 @@ CLI mode runs the default stack, writes outputs to `results/`, and logs mass-bal
 ## 3. Interface Walkthrough
 
 ### 3.1 Layout
-- **Left panel**: global parameters (`C_s`, `Δt`, `t_max`), right-boundary selector, and a layer table with Add/Update/Remove and reordering controls. The bottom row is treated as the reporting layer for mass/uptake metrics.
-- **Right panel**: stacked Matplotlib plots (flux/uptake above, concentration profile below), a navigation toolbar for zoom/pan/reset, and a time slider labelled `Time [s]: …`.
+- **Left panel**: global parameters (`C_s`, `Δt`, `t_max`), right-boundary selector, temperature list input, and a layer table with Add/Update/Remove and reordering controls. The left panel is **resizable** by dragging the divider between panels. Run (▶) and Stop (■) buttons are fixed at the top with a progress bar. The bottom row is treated as the reporting layer for mass/uptake metrics.
+- **Right panel**: stacked Matplotlib plots (flux/uptake, concentration profile, and optionally temperature vs concentration), a navigation toolbar for zoom/pan/reset, and a time slider labelled `Time [s]: …`.
 
 ### 3.2 Workflow
-1. Configure global settings and build the layer stack. Set `k=0` for purely diffusive barriers; specify non-zero `k` only for layers with reactions/absorption. Use the Arrhenius helper (Temperature, D₀, Ea) if you prefer the diffusivity to be computed instead of entered manually.
-2. Choose the terminal boundary (`Dirichlet` sink or `Neumann` impermeable) and click **Run Simulation**. The button remains disabled while the solver runs in a background thread.
+1. Configure global settings and build the layer stack. Set `k=0` for purely diffusive barriers; specify non-zero `k` only for layers with reactions/absorption. Toggle between direct D input or Arrhenius parameters (D₀, Ea) using the radio buttons. For temperature-dependent simulations, enter a comma-separated list of temperatures (e.g., "300, 350, 400, 450") and ensure all layers have D₀ and Ea values.
+2. Choose the terminal boundary (`Dirichlet` sink or `Neumann` impermeable) and click **▶ Run**. The button remains disabled while the solver runs in a background thread. You can abort the simulation anytime by clicking **■ Stop**.
 3. After completion:
    - The flux chart displays surface flux, target-interface flux, exit flux, cumulative target uptake, target mass, and—when a probe position is provided—probe flux with its cumulative integral.
    - The concentration profile spans the entire stack with dashed vertical lines marking interfaces.

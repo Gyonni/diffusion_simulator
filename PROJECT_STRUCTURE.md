@@ -45,10 +45,11 @@ diffusion_simulator/
 │
 ├── .gitignore                  # Git 제외 파일 목록
 │
+├── materials_library.json      # Material library (사용자가 저장한 물성 데이터)
+│
 ├── README.md                   # 프로젝트 개요
-├── SETUP.md                    # 환경 설정 가이드
-├── PYINSTALLER_GUIDE.md        # PyInstaller 빌드 가이드
-├── IMPROVEMENTS.md             # 코드 개선 사항
+├── DEVELOPMENT_GUIDELINES.md   # 개발 가이드라인 (필수 참고 문서)
+├── IMPLEMENTATION_STATUS.md    # 구현 상태 및 기능 목록
 └── PROJECT_STRUCTURE.md        # 이 문서
 ```
 
@@ -64,8 +65,10 @@ diffusion_simulator/
   - 다층 격자 구성
   - 경계 조건 적용
   - 질량 보존 진단
+  - 온도 스윕 시뮬레이션 (Arrhenius 방정식 적용)
 - **주요 함수**:
-  - `run_simulation()`: 메인 시뮬레이션 루프
+  - `run_simulation()`: 메인 시뮬레이션 루프 (반환: "t", "J_end" 등)
+  - `run_temperature_sweep()`: 온도별 시뮬레이션 (3D 배열 반환)
   - `_thomas_solve()`: 삼중대각 선형 시스템 해석
   - `_build_grid()`: 격자 생성
   - `mass_balance_diagnostics()`: 질량 보존 검증
@@ -76,18 +79,25 @@ diffusion_simulator/
   - 특성 길이 계산
   - Damköhler 수 계산
   - 정상 상태 플럭스 분석 해
+  - Arrhenius 확산도 계산
 - **주요 함수**:
   - `char_length_ell()`: 침투 깊이 계산
   - `damkohler_number()`: 무차원 수
   - `steady_flux()`: 정상 상태 플럭스
+  - `calculate_diffusivity_arrhenius()`: D = D0 * exp(-Ea / (kb*T))
 
 #### diffreact_gui/gui_elements.py
 - **역할**: Tkinter GUI 인터페이스
 - **주요 클래스**:
   - `App`: 메인 애플리케이션 윈도우
-  - `LayerTable`: 다층 파라미터 테이블 위젯
+  - `LayerTable`: 다층 파라미터 테이블 위젯 (Ea 컬럼 포함)
+  - `MaterialLibraryDialog`: Material library 관리 대화상자
 - **주요 기능**:
   - 사용자 입력 처리
+  - 리사이즈 가능한 패널 (PanedWindow 사용)
+  - 상단 고정 제어 버튼 (▶ Run, ■ Stop)
+  - 복사 가능한 에러 다이얼로그 (ScrolledText)
+  - 온도별 시뮬레이션 지원
   - 플롯 업데이트
   - 파일 내보내기
   - 매뉴얼 표시
@@ -98,22 +108,25 @@ diffusion_simulator/
   - Matplotlib 그래프 생성
   - 플럭스/흡수량 플롯
   - 농도 프로필 플롯
+  - 온도별 농도 플롯 (3번째 그래프)
 - **주요 함수**:
-  - `create_figures()`: 그래프 초기화
+  - `create_figures()`: 3개 subplot 그래프 초기화
   - `update_flux_axes()`: 플럭스 데이터 업데이트
   - `update_profile_axes()`: 프로필 업데이트
+  - `update_temperature_axes()`: 온도 vs 농도 플롯
 
 #### diffreact_gui/models.py
 - **역할**: 데이터 모델 정의
 - **주요 클래스**:
-  - `LayerParam`: 단일 층 파라미터
-  - `SimParams`: 전체 시뮬레이션 파라미터
+  - `LayerParam`: 단일 층 파라미터 (D0, Ea 포함)
+  - `SimParams`: 전체 시뮬레이션 파라미터 (temperatures 리스트 포함)
 
 #### diffreact_gui/utils.py
 - **역할**: 유틸리티 함수
 - **주요 기능**:
   - 파라미터 검증
   - 결과 저장 (NPZ, CSV, JSON)
+  - Material library 관리 (load/save/add)
   - 누적 적분 계산
   - 로깅 설정
 
@@ -155,31 +168,36 @@ diffusion_simulator/
 - 프로젝트 개요
 - 빠른 시작 가이드
 - 기능 요약
+- 설치, 실행, 패키징 방법 통합
 
-#### SETUP.md
-- 개발 환경 설정
-- 가상환경 사용법
-- 의존성 설치
-- 문제 해결
+#### DEVELOPMENT_GUIDELINES.md
+- **필수 참고 문서**: 모든 코드 수정 시 준수해야 할 가이드라인
+- 핵심 개발 원칙 (사용자 확인, 코드 품질, 문서화, 테스트)
+- 세계 수준의 개발 워크플로우
+- 프로젝트별 가이드라인 (수치 정확도, GUI 디자인, 입력 검증)
+- 개발 체크리스트
 
-#### PYINSTALLER_GUIDE.md
-- PyInstaller 사용법
-- 빌드 문제 해결
-- 최적화 팁
+#### IMPLEMENTATION_STATUS.md
+- 구현 완료된 기능 목록 (Phase 1, Phase 2)
+- 최근 업데이트 내역
+- 알려진 이슈
+- 다음 단계 계획
+
+#### PROJECT_STRUCTURE.md
+- 이 문서
+- 프로젝트 파일 구조 및 각 파일의 역할
+- 모듈 간 의존성 다이어그램
+- 데이터 흐름 설명
 
 #### docs/USER_MANUAL.md
 - 사용자 매뉴얼 (영문)
 - GUI 사용법
 - 수치 모델 설명
+- 파라미터 설명 및 워크플로우
 
 #### docs/USER_MANUAL_KO.md
 - 사용자 매뉴얼 (한글)
 - 동일 내용 한글 버전
-
-#### IMPROVEMENTS.md
-- 코드 개선 기록
-- 리팩토링 내역
-- 성능 최적화
 
 ### 의존성 관리
 

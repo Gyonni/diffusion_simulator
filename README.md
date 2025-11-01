@@ -17,15 +17,38 @@ pip install -r requirements.txt
 pip install numpy matplotlib
 ```
 
-### Development Setup
+### Development Setup (Virtual Environment Recommended)
 
-For development with testing and build tools:
+1. **Create virtual environment**:
+   ```bash
+   python -m venv venv
+   ```
 
-```bash
-pip install -r requirements-dev.txt
-```
+2. **Activate environment**:
+   ```bash
+   # Windows PowerShell
+   .\venv\Scripts\Activate.ps1
 
-See [SETUP.md](SETUP.md) for detailed environment setup instructions.
+   # Windows CMD
+   venv\Scripts\activate.bat
+
+   # Linux/macOS
+   source venv/bin/activate
+   ```
+
+3. **Install dependencies**:
+   ```bash
+   # For users (minimal)
+   pip install -r requirements.txt
+
+   # For developers (includes testing/build tools)
+   pip install -r requirements-dev.txt
+   ```
+
+4. **Verify installation**:
+   ```bash
+   python -c "import numpy; import matplotlib; print('All packages installed')"
+   ```
 
 ## Running the simulator
 
@@ -37,15 +60,22 @@ Outputs land in `results/` by default (`results.npz`, `flux_vs_time.csv`, `conce
 
 ## GUI features
 
-- Layer table for per-layer parameters (top → bottom); the last row is the target layer.
-- Progress bar updates while the solver runs; completion dialog confirms success.
-- Built-in “View Manual” window summarises the governing equations, usage, and input constraints.
-- Time navigation beneath the profile plot (slider, spin box, step buttons) keeps the displayed snapshot and label in sync.
-- Validation before every run checks physical constraints (positive thickness/diffusivity, `Δt < t_max`, etc.) and shows actionable error dialogs if violated.
-- Optional Arrhenius helper (enter T, D₀, Ea) to populate layer diffusivities.
-- Flux probe entry lets you inspect flux/cumulative uptake at an arbitrary position in the stack.
-- Mass/uptake metrics are reported for the final layer; choose its properties accordingly.
-- Flux view selector lets you focus on surface, interface, exit, or probe flux/uptake curves individually.
+### Core Features
+- **Multi-layer stack**: Layer table for per-layer parameters (top → bottom); the last row is the target layer
+- **Progress tracking**: Run/Abort buttons at top with progress bar; abort simulation anytime
+- **Built-in manual**: "View Manual" window summarizes governing equations, usage, and input constraints
+- **Time navigation**: Slider, spin box, and step buttons beneath profile plot
+- **Input validation**: Checks physical constraints before every run with actionable error dialogs
+
+### Material Properties
+- **Dual input modes**: Toggle between direct diffusivity (D) or Arrhenius parameters (D₀, Ea)
+- **Material library**: Save and load material properties to/from persistent library
+- **Temperature sweep**: Enter comma-separated temperature list (e.g., "300, 350, 400, 450") for multi-temperature simulations
+
+### Analysis Tools
+- **Flux probe**: Inspect flux/cumulative uptake at arbitrary position or layer center
+- **Flux view selector**: Focus on surface, interface, exit, or probe flux/uptake curves individually
+- **Mass/uptake metrics**: Reported for the final (target) layer
 
 ## Numerical notes
 
@@ -73,46 +103,35 @@ pytest -q
 
 ## Packaging
 
-### Building a standalone executable (Windows)
+### Building a standalone executable
 
-**Prerequisites**: Make sure you're in a virtual environment with PyInstaller installed.
+**Prerequisites**: Virtual environment with PyInstaller installed (included in `requirements-dev.txt`).
 
-1. Set up environment (first time only):
-```bash
-# Create virtual environment
-python -m venv venv
+1. **Activate virtual environment** (if not already active):
+   ```bash
+   venv\Scripts\activate  # Windows
+   source venv/bin/activate  # Linux/macOS
+   ```
 
-# Activate it
-venv\Scripts\activate  # Windows
-source venv/bin/activate  # Linux/macOS
+2. **Clean previous builds** (optional):
+   ```bash
+   python -c "import shutil; shutil.rmtree('build', ignore_errors=True); shutil.rmtree('dist', ignore_errors=True)"
+   ```
 
-# Install dependencies
-pip install -r requirements-dev.txt
-```
+3. **Build executable**:
+   ```bash
+   python -m PyInstaller --onefile --noconsole --name DiffReactGUI run_diffreact_gui.py
+   ```
 
-2. Clean previous builds (if any):
-```bash
-python -c "import shutil; shutil.rmtree('build', ignore_errors=True); shutil.rmtree('dist', ignore_errors=True)"
-```
+4. **Output**: `dist/DiffReactGUI.exe` (~40 MB)
 
-3. Build the executable:
-```bash
-python -m PyInstaller --onefile --noconsole --name DiffReactGUI run_diffreact_gui.py
-```
+**Important**: Always use `python -m PyInstaller` (not `pyinstaller` directly) to avoid path issues.
 
-4. The executable will be created in `dist/DiffReactGUI.exe` (approximately 40 MB)
-
-**Important**: Always use `python -m PyInstaller` instead of `pyinstaller` directly to avoid path issues.
-
-### Troubleshooting
-
-Common issues and solutions:
+### Common Issues
 
 | Issue | Solution |
 |-------|----------|
-| "No Python at ..." error | Activate virtual environment and use `python -m PyInstaller` |
-| "Unable to create process" | Reinstall PyInstaller: `pip uninstall pyinstaller && pip install pyinstaller` |
-| Module not found errors | Clean build directories and rebuild |
-| Version conflicts | Use a fresh virtual environment |
-
-See [PYINSTALLER_GUIDE.md](PYINSTALLER_GUIDE.md) for detailed troubleshooting.
+| "No Python at ..." error | Ensure virtual environment is active; use `python -m PyInstaller` |
+| "Unable to create process" | Reinstall PyInstaller: `pip uninstall -y pyinstaller && pip install pyinstaller` |
+| Module not found | Clean build dirs and rebuild |
+| PowerShell execution policy | Run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` |

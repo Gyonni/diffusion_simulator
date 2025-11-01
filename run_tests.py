@@ -32,6 +32,10 @@ def main() -> int:
     run_one("test_pure_diffusion_neumann_right", ts.test_pure_diffusion_neumann_right)
     run_one("test_steady_flux_neumann_analytical_match", ts.test_steady_flux_neumann_analytical_match)
     run_one("test_mass_balance_residual", ts.test_mass_balance_residual)
+    run_one("test_run_simulation_return_keys", ts.test_run_simulation_return_keys)
+    run_one("test_temperature_sweep_basic", ts.test_temperature_sweep_basic)
+    run_one("test_temperature_sweep_uses_correct_keys", ts.test_temperature_sweep_uses_correct_keys)
+    run_one("test_arrhenius_calculation", ts.test_arrhenius_calculation)
 
     ok = all(ok for _, ok, _ in results)
     for name, passed, info in results:

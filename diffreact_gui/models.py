@@ -14,9 +14,12 @@ class LayerParam:
         diffusivity: Fickian diffusion coefficient [m^2/s]
         reaction_rate: First-order reaction constant [1/s], use 0 for pure diffusion
         nodes: Number of grid nodes for this layer (must be >= 2)
+        D0: Pre-exponential factor for Arrhenius equation [m^2/s] (optional)
+        Ea: Activation energy [eV] (optional)
 
     Note:
         Parameter validation is performed in validate_params() in utils.py
+        For temperature-dependent simulations, D0 and Ea must be provided.
     """
 
     name: str
@@ -24,6 +27,8 @@ class LayerParam:
     diffusivity: float  # m^2/s
     reaction_rate: float  # 1/s (set 0 for pure diffusion)
     nodes: int  # grid nodes for this layer (>=2)
+    D0: Optional[float] = None  # m^2/s (for Arrhenius)
+    Ea: Optional[float] = None  # eV (for Arrhenius)
 
 
 @dataclass
@@ -37,6 +42,7 @@ class SimParams:
         t_max: Total simulation time [s]
         bc_right: Right boundary condition ('Neumann' or 'Dirichlet')
         probe_position: Optional position for flux probe [m]
+        temperatures: Optional list of temperatures [K] for temperature sweep
     """
 
     layers: List[LayerParam]
@@ -45,3 +51,4 @@ class SimParams:
     t_max: float  # seconds
     bc_right: str  # 'Neumann' or 'Dirichlet'
     probe_position: Optional[float] = None
+    temperatures: Optional[List[float]] = None  # Kelvin (for temperature sweep)

@@ -248,6 +248,7 @@ def run_simulation(
     params: SimParams,
     max_retries: int = 6,
     progress_callback: Optional[Callable[[float], None]] = None,
+    abort_event: Optional[object] = None,
 ) -> Dict[str, np.ndarray | Dict[str, float] | List[str]]:
     """Run the multilayer diffusion–reaction simulation."""
 
@@ -323,6 +324,10 @@ def run_simulation(
                 progress_callback(0.0)
 
             for idx_t in range(1, n_steps):
+                # Check for abort signal
+                if abort_event is not None and hasattr(abort_event, 'is_set') and abort_event.is_set():
+                    raise RuntimeError("Simulation aborted by user")
+
                 rhs[0] = Cs
                 if bc_right == "Dirichlet":
                     rhs[-1] = dirichlet_right_value if dirichlet_right_value is not None else 0.0
@@ -452,3 +457,184 @@ def mass_balance_diagnostics(
     if return_components:
         return residual, rel_error, components
     return residual, rel_error
+
+
+def run_temperature_sweep(
+    params: SimParams,
+    max_retries: int = 6,
+    progress_callback: Optional[Callable[[float], None]] = None,
+    abort_event: Optional[object] = None,
+) -> Dict[str, np.ndarray | Dict | List]:
+    """Run simulation across multiple temperatures using Arrhenius equation.
+
+    Args:
+        params: Simulation parameters with temperatures list
+        max_retries: Maximum solver retries per temperature
+        progress_callback: Optional callback(progress) for overall progress [0,1]
+        abort_event: Optional event to abort the sweep
+
+    Returns:
+        Dictionary with temperature-indexed results:
+            - 'temperatures': Array of temperatures [K]
+            - 'results': Dict[T] -> result dict from run_simulation
+            - 'x': Spatial grid (same for all T)
+            - 'time': Time grid (same for all T)
+            - 'C_Txt': 3D array [T_idx, time_idx, x_idx]
+            - 'J_surface_Tt': 2D array [T_idx, time_idx]
+            - 'J_target_Tt': 2D array [T_idx, time_idx]
+            - 'J_exit_Tt': 2D array [T_idx, time_idx]
+            - 'J_probe_Tt': 2D array [T_idx, time_idx] (if probe used)
+
+    Raises:
+        ValueError: If temperatures not provided or layers missing D0/Ea
+        RuntimeError: If simulation aborted
+    """
+    from .physics import calculate_diffusivity_arrhenius
+    from copy import deepcopy
+
+    if not params.temperatures:
+        raise ValueError("Temperature sweep requires params.temperatures to be specified")
+
+    # Verify all layers have D0 and Ea
+    for layer in params.layers:
+        if layer.D0 is None or layer.Ea is None:
+            raise ValueError(
+                f"Temperature sweep requires all layers to have D0 and Ea. "
+                f"Layer '{layer.name}' is missing D0 or Ea."
+            )
+
+    temperatures = np.array(params.temperatures)
+    n_temps = len(temperatures)
+    results_by_temp = {}
+
+    # Pre-calculate the minimum dt required across all temperatures
+    # to ensure all simulations use the same time grid
+    # Build a temporary grid to check stability constraints at each temperature
+    x_temp, _, _, _, _ = _build_grid(params.layers)
+    dx_all = np.diff(x_temp)
+    min_dt = params.dt
+
+    if dx_all.size > 0:
+        for T in temperatures:
+            # Calculate D values at this temperature using same logic as _build_grid
+            D_nodes_temp = []
+            for idx, layer in enumerate(params.layers):
+                D_at_T = calculate_diffusivity_arrhenius(layer.D0, layer.Ea, T)
+                # First layer uses all nodes, subsequent layers skip first node (shared interface)
+                if idx == 0:
+                    num_nodes = layer.nodes
+                else:
+                    num_nodes = layer.nodes - 1
+                D_nodes_temp.extend([D_at_T] * num_nodes)
+
+            D_nodes_array = np.array(D_nodes_temp)
+            D_edges_temp = _compute_edge_diffusivity(D_nodes_array)
+
+            # Calculate stability constraint at this temperature
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ratio = (dx_all ** 2) / np.maximum(D_edges_temp, EPSILON_DIFFUSIVITY)
+            finite_ratio = ratio[np.isfinite(ratio) & (ratio > 0)]
+            if finite_ratio.size > 0:
+                recommended_dt = STABILITY_FACTOR * float(np.min(finite_ratio))
+                if min_dt > recommended_dt:
+                    min_dt = recommended_dt
+
+    logger.info(f"Temperature sweep: using common dt={min_dt:.3e} for all temperatures")
+
+    for i_temp, T in enumerate(temperatures):
+        # Check for abort
+        if abort_event is not None and hasattr(abort_event, 'is_set') and abort_event.is_set():
+            raise RuntimeError("Temperature sweep aborted by user")
+
+        # Update progress: overall progress across temperatures
+        if progress_callback is not None:
+            overall_progress = i_temp / n_temps
+            progress_callback(overall_progress)
+
+        # Create modified params with diffusivities calculated at this T
+        modified_layers = []
+        for layer in params.layers:
+            D_at_T = calculate_diffusivity_arrhenius(layer.D0, layer.Ea, T)
+            modified_layer = LayerParam(
+                name=layer.name,
+                thickness=layer.thickness,
+                diffusivity=D_at_T,
+                reaction_rate=layer.reaction_rate,
+                nodes=layer.nodes,
+                D0=layer.D0,
+                Ea=layer.Ea,
+            )
+            modified_layers.append(modified_layer)
+
+        temp_params = SimParams(
+            layers=modified_layers,
+            Cs=params.Cs,
+            dt=min_dt,  # Use common dt for all temperatures
+            t_max=params.t_max,
+            bc_right=params.bc_right,
+            probe_position=params.probe_position,
+            temperatures=None,  # Don't recurse
+        )
+
+        # Run simulation at this temperature with nested progress
+        def nested_progress(p: float):
+            if progress_callback is not None:
+                # Map this temp's progress to overall progress range
+                overall_p = (i_temp + p) / n_temps
+                progress_callback(overall_p)
+
+        result = run_simulation(
+            temp_params,
+            max_retries=max_retries,
+            progress_callback=nested_progress,
+            abort_event=abort_event,
+        )
+
+        results_by_temp[T] = result
+
+    # Final progress
+    if progress_callback is not None:
+        progress_callback(1.0)
+
+    # Aggregate results into temperature-indexed arrays
+    # Use first result to get dimensions
+    first_result = results_by_temp[temperatures[0]]
+    x = first_result["x"]
+    time = first_result["t"]  # Note: run_simulation returns "t", not "time"
+    n_time = len(time)
+    n_x = len(x)
+
+    C_Txt = np.zeros((n_temps, n_time, n_x))
+    J_surface_Tt = np.zeros((n_temps, n_time))
+    J_target_Tt = np.zeros((n_temps, n_time))
+    J_exit_Tt = np.zeros((n_temps, n_time))
+
+    # Check if probe was used
+    has_probe = "J_probe" in first_result
+    if has_probe:
+        J_probe_Tt = np.zeros((n_temps, n_time))
+
+    for i_temp, T in enumerate(temperatures):
+        res = results_by_temp[T]
+        C_Txt[i_temp, :, :] = res["C_xt"]
+        J_surface_Tt[i_temp, :] = res["J_source"]
+        J_target_Tt[i_temp, :] = res["J_target"]
+        J_exit_Tt[i_temp, :] = res["J_end"]  # Note: run_simulation returns "J_end", not "J_exit"
+        if has_probe:
+            J_probe_Tt[i_temp, :] = res["J_probe"]
+
+    sweep_results = {
+        "temperatures": temperatures,
+        "results_by_temp": results_by_temp,
+        "x": x,
+        "t": time,  # Use 't' for consistency with run_simulation
+        "C_Txt": C_Txt,
+        "J_surface_Tt": J_surface_Tt,
+        "J_target_Tt": J_target_Tt,
+        "J_end_Tt": J_exit_Tt,  # Use 'J_end_Tt' for consistency
+    }
+
+    if has_probe:
+        sweep_results["J_probe_Tt"] = J_probe_Tt
+
+    return sweep_results

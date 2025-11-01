@@ -12,7 +12,20 @@
       "Bash(where:*)",
       "Bash(if exist build rmdir /s /q build)",
       "Bash(if exist dist rmdir /s /q dist)",
-      "Bash(if exist DiffReactGUI.spec del /q DiffReactGUI.spec)"
+      "Bash(if exist DiffReactGUI.spec del /q DiffReactGUI.spec)",
+      "Bash(python -m diffreact_gui:*)",
+      "Bash(venvScriptsactivate)",
+      "Bash(\"venv/Scripts/python.exe\" -m diffreact_gui)",
+      "Bash(del IMPROVEMENTS.md guidelines.md PYINSTALLER_GUIDE.md SETUP.md DEPENDENCY_MANAGEMENT.md)",
+      "Bash(tasklist:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell:*)",
+      "Bash(\"venv/Scripts/python.exe\" -m PyInstaller:*)",
+      "Bash(\"venv/Scripts/python.exe\" -m PyInstaller --onefile --noconsole --name DiffReactGUI run_diffreact_gui.py --clean)",
+      "Bash(\"venv/Scripts/python.exe\" run_tests.py)",
+      "Bash(\"venv/Scripts/python.exe\" -m pip install:*)",
+      "Bash(\"venv/Scripts/python.exe\" -m diffreact_gui.main)",
+      "Bash(nul)"
     ],
     "deny": [],
     "ask": []

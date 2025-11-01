@@ -10,8 +10,10 @@ from matplotlib.lines import Line2D
 
 
 def create_figures() -> Tuple[plt.Figure, Dict[str, Any]]:
-    fig, (ax_flux, ax_prof) = plt.subplots(2, 1, figsize=(9, 7), sharex=False)
-    fig.subplots_adjust(hspace=0.35)
+    # Smaller figure size to fit controls below in screen resolution
+    fig, (ax_flux, ax_prof, ax_temp) = plt.subplots(3, 1, figsize=(9, 7), sharex=False)
+    # Increase spacing to prevent title/label overlap
+    fig.subplots_adjust(hspace=0.4, top=0.96, bottom=0.08, left=0.12, right=0.88)
 
     ax_flux.set_title("Flux & Uptake vs Time")
     ax_flux.set_xlabel("t [s]")
@@ -44,12 +46,19 @@ def create_figures() -> Tuple[plt.Figure, Dict[str, Any]]:
     ax_prof.set_ylabel("C [mol/m^3]")
     line_prof, = ax_prof.plot([], [], color="tab:blue")
 
+    ax_temp.set_title("Concentration vs Temperature (at selected position)")
+    ax_temp.set_xlabel("T [K]")
+    ax_temp.set_ylabel("C [mol/m^3]")
+    line_temp, = ax_temp.plot([], [], marker='o', linestyle='-', color="tab:red")
+    line_temp.set_label("C(T) at position")
+
     artists = {
         "figure": fig,
         "ax_flux": ax_flux,
         "ax_flux_secondary": ax_flux_secondary,
         "ax_flux_legend": None,
         "ax_prof": ax_prof,
+        "ax_temp": ax_temp,
         "line_J_surface": line_J_surface,
         "line_J_target": line_J_target,
         "line_J_exit": line_J_exit,
@@ -60,6 +69,7 @@ def create_figures() -> Tuple[plt.Figure, Dict[str, Any]]:
         "line_mass_target": line_mass_target,
         "line_cum_probe": line_cum_probe,
         "line_prof": line_prof,
+        "line_temp": line_temp,
         "boundary_lines": [],
         "flux_line_keys": [
             "line_J_surface",
@@ -91,6 +101,7 @@ def update_flux_axes(
     *,
     J_probe: np.ndarray | None = None,
     cum_probe: np.ndarray | None = None,
+    temperature: float | None = None,
 ) -> None:
     artists["line_J_surface"].set_data(t, J_surface)
     artists["line_J_target"].set_data(t, J_target)
@@ -111,6 +122,12 @@ def update_flux_axes(
         artists["line_cum_probe"].set_data([], [])
 
     ax_flux = artists["ax_flux"]
+    # Update title with temperature if specified
+    if temperature is not None:
+        ax_flux.set_title(f"Flux & Uptake vs Time (T = {temperature:.1f} K)")
+    else:
+        ax_flux.set_title("Flux & Uptake vs Time")
+
     ax_flux.relim()
     if t.size:
         ax_flux.set_xlim(t[0], t[-1])
@@ -128,9 +145,16 @@ def update_profile_axes(
     x: np.ndarray,
     C: np.ndarray,
     boundaries: np.ndarray,
+    temperature: float | None = None,
 ) -> None:
     artists["line_prof"].set_data(x, C)
     ax = artists["ax_prof"]
+
+    # Update title with temperature if specified
+    if temperature is not None:
+        ax.set_title(f"Concentration Profile (T = {temperature:.1f} K)")
+    else:
+        ax.set_title("Concentration Profile")
 
     for line in artists.get("boundary_lines", []):
         line.remove()
@@ -140,6 +164,30 @@ def update_profile_axes(
     for boundary in boundaries[1:-1]:
         vline = ax.axvline(boundary, color="gray", linestyle="--", alpha=0.3)
         artists["boundary_lines"].append(vline)
+
+    ax.relim()
+    ax.autoscale_view()
+
+
+def update_temperature_axes(
+    artists: Dict[str, Any],
+    temperatures: np.ndarray,
+    concentrations: np.ndarray,
+    position: float,
+) -> None:
+    """Update temperature vs concentration plot.
+
+    Args:
+        artists: Dictionary of matplotlib artist objects
+        temperatures: Array of temperatures [K]
+        concentrations: Array of concentrations at selected position [mol/m^3]
+        position: The x-position [m] where concentrations were sampled
+    """
+    line = artists["line_temp"]
+    ax = artists["ax_temp"]
+
+    line.set_data(temperatures, concentrations)
+    ax.set_title(f"Concentration vs Temperature (at x={position:.3e} m)")
 
     ax.relim()
     ax.autoscale_view()

@@ -147,8 +147,9 @@ def save_csv_flux(
     *,
     J_probe: np.ndarray | None = None,
     cum_probe: np.ndarray | None = None,
+    filename: str = "flux_vs_time.csv",
 ) -> str:
-    csv_path = os.path.join(base_path, "flux_vs_time.csv")
+    csv_path = os.path.join(base_path, filename)
     columns = [
         t,
         J_source,
@@ -189,8 +190,8 @@ def save_csv_profile(base_path: str, x: np.ndarray, C: np.ndarray, t_value: floa
     return csv_path
 
 
-def save_profiles_matrix(base_path: str, x: np.ndarray, t: np.ndarray, C_xt: np.ndarray) -> str:
-    csv_path = os.path.join(base_path, "concentration_profiles.csv")
+def save_profiles_matrix(base_path: str, x: np.ndarray, t: np.ndarray, C_xt: np.ndarray, filename: str = "concentration_profiles.csv") -> str:
+    csv_path = os.path.join(base_path, filename)
     header = ["x[m]"] + [f"C(t={ti:.6g}s)[mol/m^3]" for ti in t]
     data = np.column_stack([x, C_xt.T])
     np.savetxt(csv_path, data, delimiter=",", header=",".join(header), comments="")
@@ -205,3 +206,167 @@ def save_metadata(base_path: str, params: SimParams, extras: Dict[str, Any] | No
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
     return meta_path
+
+
+# Material Library Functions
+MATERIALS_LIBRARY_FILE = "materials_library.json"
+
+
+def load_materials_library(library_path: str = MATERIALS_LIBRARY_FILE) -> Dict[str, Dict[str, float]]:
+    """Load materials library from JSON file.
+
+    Returns:
+        Dictionary mapping material name to properties dict with keys:
+        'D0' (optional), 'Ea' (optional), 'diffusivity' (optional), 'reaction_rate'
+    """
+    if not os.path.exists(library_path):
+        return {}
+    try:
+        with open(library_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError) as e:
+        logging.warning(f"Failed to load materials library: {e}")
+        return {}
+
+
+def save_materials_library(materials: Dict[str, Dict[str, float]], library_path: str = MATERIALS_LIBRARY_FILE) -> None:
+    """Save materials library to JSON file.
+
+    Args:
+        materials: Dictionary mapping material name to properties dict
+        library_path: Path to save the library file
+    """
+    try:
+        with open(library_path, "w", encoding="utf-8") as f:
+            json.dump(materials, f, indent=2)
+    except IOError as e:
+        logging.error(f"Failed to save materials library: {e}")
+        raise
+
+
+def add_material_to_library(
+    name: str,
+    D0: float | None = None,
+    Ea: float | None = None,
+    diffusivity: float | None = None,
+    reaction_rate: float = 0.0,
+    library_path: str = MATERIALS_LIBRARY_FILE
+) -> None:
+    """Add or update a material in the library.
+
+    Args:
+        name: Material name
+        D0: Pre-exponential factor [m^2/s]
+        Ea: Activation energy [eV]
+        diffusivity: Direct diffusivity [m^2/s]
+        reaction_rate: Reaction rate constant [1/s]
+        library_path: Path to the library file
+    """
+    materials = load_materials_library(library_path)
+    material_data: Dict[str, float] = {"reaction_rate": reaction_rate}
+    if D0 is not None:
+        material_data["D0"] = D0
+    if Ea is not None:
+        material_data["Ea"] = Ea
+    if diffusivity is not None:
+        material_data["diffusivity"] = diffusivity
+    materials[name] = material_data
+    save_materials_library(materials, library_path)
+
+
+def save_temperature_sweep_excel(
+    base_path: str,
+    temperatures: np.ndarray,
+    results_by_temp: Dict[float, Dict[str, Any]],
+    filename: str = "results_temperature_sweep.xlsx"
+) -> str:
+    """Save temperature sweep results as Excel file with temperature-labeled sheets.
+
+    Args:
+        base_path: Directory where the file will be saved
+        temperatures: Array of temperatures [K]
+        results_by_temp: Dictionary mapping temperature to simulation results
+        filename: Name of the output Excel file
+
+    Returns:
+        str: Full path to the saved file
+    """
+    try:
+        import openpyxl
+        from openpyxl import Workbook
+    except ImportError:
+        raise ImportError("openpyxl is required for Excel export. Install with: pip install openpyxl")
+
+    wb = Workbook()
+    # Remove default sheet
+    wb.remove(wb.active)
+
+    for i_temp, T in enumerate(temperatures):
+        temp_result = results_by_temp[T]
+        sheet_name = f"{int(T)}K"
+
+        # Flux data sheet
+        ws_flux = wb.create_sheet(title=f"{sheet_name}_Flux")
+        t = temp_result["t"]
+        J_source = temp_result["J_source"]
+        J_target = temp_result["J_target"]
+        J_end = temp_result["J_end"]
+        cum_source = temp_result["cum_source"]
+        cum_target = temp_result["cum_target"]
+        cum_end = temp_result["cum_end"]
+        mass_target = temp_result["mass_target"]
+
+        # Headers
+        headers = [
+            "Time [s]",
+            "Flux_surface [mol/(m^2·s)]",
+            "Flux_target_interface [mol/(m^2·s)]",
+            "Flux_exit [mol/(m^2·s)]",
+            "Cum_flux_surface [mol/m^2]",
+            "Cum_flux_target_interface [mol/m^2]",
+            "Cum_flux_exit [mol/m^2]",
+            "Mass_target [mol/m^2]",
+        ]
+
+        # Add probe columns if available
+        J_probe_temp = temp_result.get("J_probe")
+        cum_probe_temp = temp_result.get("cum_probe")
+        if J_probe_temp is not None and J_probe_temp.size > 0:
+            headers.extend(["Flux_probe [mol/(m^2·s)]", "Cum_flux_probe [mol/m^2]"])
+
+        ws_flux.append(headers)
+
+        # Data rows
+        for i in range(len(t)):
+            row = [
+                t[i],
+                J_source[i],
+                J_target[i],
+                J_end[i],
+                cum_source[i],
+                cum_target[i],
+                cum_end[i],
+                mass_target[i],
+            ]
+            if J_probe_temp is not None and J_probe_temp.size > 0:
+                row.extend([J_probe_temp[i], cum_probe_temp[i]])
+            ws_flux.append(row)
+
+        # Concentration profile sheet
+        ws_conc = wb.create_sheet(title=f"{sheet_name}_Concentration")
+        x = temp_result["x"]
+        C_xt = temp_result["C_xt"]
+
+        # Headers: x, then C(x, t_i) for each time
+        conc_headers = ["Position x [m]"] + [f"C(x, t={t[i]:.6e}s) [mol/m^3]" for i in range(len(t))]
+        ws_conc.append(conc_headers)
+
+        # Data rows: each row is one position with concentrations at all times
+        for i_x in range(len(x)):
+            row = [x[i_x]] + [C_xt[i_t, i_x] for i_t in range(len(t))]
+            ws_conc.append(row)
+
+    # Save workbook
+    full_path = os.path.join(base_path, filename)
+    wb.save(full_path)
+    return full_path
