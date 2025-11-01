@@ -459,6 +459,45 @@ def mass_balance_diagnostics(
     return residual, rel_error
 
 
+def _interpolate_to_common_time(result: Dict[str, np.ndarray], common_time: np.ndarray) -> Dict[str, np.ndarray]:
+    """Interpolate simulation results onto a common time grid using numpy.interp.
+
+    Args:
+        result: Original simulation result dictionary
+        common_time: Target time array for interpolation
+
+    Returns:
+        New result dictionary with interpolated values on common_time grid
+    """
+    t_orig = result["t"]
+    interpolated = result.copy()
+
+    # Update time array
+    interpolated["t"] = common_time
+
+    # Interpolate 1D time series using numpy.interp (linear interpolation)
+    for key in ["J_source", "J_target", "J_end", "cum_source", "cum_target", "cum_end", "mass_target"]:
+        if key in result:
+            interpolated[key] = np.interp(common_time, t_orig, result[key])
+
+    # Interpolate probe data if present
+    if "J_probe" in result and result["J_probe"].size > 0:
+        interpolated["J_probe"] = np.interp(common_time, t_orig, result["J_probe"])
+
+    if "cum_probe" in result and result["cum_probe"].size > 0:
+        interpolated["cum_probe"] = np.interp(common_time, t_orig, result["cum_probe"])
+
+    # Interpolate 2D concentration field C_xt[time, x]
+    if "C_xt" in result:
+        n_x = result["C_xt"].shape[1]
+        C_xt_new = np.zeros((len(common_time), n_x))
+        for i_x in range(n_x):
+            C_xt_new[:, i_x] = np.interp(common_time, t_orig, result["C_xt"][:, i_x])
+        interpolated["C_xt"] = C_xt_new
+
+    return interpolated
+
+
 def run_temperature_sweep(
     params: SimParams,
     max_retries: int = 6,
@@ -509,10 +548,23 @@ def run_temperature_sweep(
 
     # Pre-calculate the minimum dt required across all temperatures
     # to ensure all simulations use the same time grid
-    # Build a temporary grid to check stability constraints at each temperature
-    x_temp, _, _, _, _ = _build_grid(params.layers)
+    # Build x grid (spatial coordinates only, independent of temperature)
+    x_values = []
+    position = 0.0
+    for idx, layer in enumerate(params.layers):
+        local = np.linspace(0.0, layer.thickness, layer.nodes, endpoint=True)
+        if idx == 0:
+            nodes = position + local
+        else:
+            nodes = position + local[1:]  # Skip first node to avoid duplication
+        x_values.extend(nodes.tolist())
+        position += layer.thickness
+
+    x_temp = np.array(x_values)
     dx_all = np.diff(x_temp)
     min_dt = params.dt
+
+    logger.info(f"Temperature sweep pre-calculation: x_temp has {len(x_temp)} nodes, dx_all has {len(dx_all)} edges")
 
     if dx_all.size > 0:
         for T in temperatures:
@@ -520,15 +572,24 @@ def run_temperature_sweep(
             D_nodes_temp = []
             for idx, layer in enumerate(params.layers):
                 D_at_T = calculate_diffusivity_arrhenius(layer.D0, layer.Ea, T)
-                # First layer uses all nodes, subsequent layers skip first node (shared interface)
+                # First layer: use all nodes
+                # Subsequent layers: skip first node (already counted as interface)
+                local = np.linspace(0.0, layer.thickness, layer.nodes, endpoint=True)
                 if idx == 0:
-                    num_nodes = layer.nodes
+                    nodes_count = layer.nodes
                 else:
-                    num_nodes = layer.nodes - 1
-                D_nodes_temp.extend([D_at_T] * num_nodes)
+                    nodes_count = layer.nodes - 1  # Skip first after slicing
+                D_nodes_temp.extend([D_at_T] * nodes_count)
 
             D_nodes_array = np.array(D_nodes_temp)
             D_edges_temp = _compute_edge_diffusivity(D_nodes_array)
+
+            logger.info(f"  T={T:.1f}K: D_nodes has {len(D_nodes_array)} nodes, D_edges has {len(D_edges_temp)} edges")
+
+            # Check for shape mismatch
+            if len(dx_all) != len(D_edges_temp):
+                logger.error(f"  Shape mismatch! dx_all has {len(dx_all)} edges but D_edges_temp has {len(D_edges_temp)} edges")
+                raise ValueError(f"Shape mismatch in temperature sweep: dx_all ({len(dx_all)}) vs D_edges_temp ({len(D_edges_temp)})")
 
             # Calculate stability constraint at this temperature
             with np.errstate(divide="ignore", invalid="ignore"):
@@ -536,10 +597,36 @@ def run_temperature_sweep(
             finite_ratio = ratio[np.isfinite(ratio) & (ratio > 0)]
             if finite_ratio.size > 0:
                 recommended_dt = STABILITY_FACTOR * float(np.min(finite_ratio))
+                logger.info(f"  T={T:.1f}K: D_max={np.max(D_nodes_array):.3e}, recommended_dt={recommended_dt:.3e}")
                 if min_dt > recommended_dt:
                     min_dt = recommended_dt
 
-    logger.info(f"Temperature sweep: using common dt={min_dt:.3e} for all temperatures")
+    # Sanity check: prevent absurdly small dt that would cause memory issues
+    # With typical t_max ~ 0.1-1 seconds, we should never need more than 1e7 time steps
+    MIN_ALLOWED_DT = 1e-10  # Absolute minimum dt (0.1 nanosecond)
+    MAX_ALLOWED_STEPS = 10_000_000  # Maximum 10 million time steps
+
+    expected_n_steps = int(np.floor(params.t_max / min_dt)) + 1
+
+    if min_dt < MIN_ALLOWED_DT:
+        logger.warning(f"Calculated dt={min_dt:.3e} is too small (< {MIN_ALLOWED_DT:.3e}). "
+                      "This may indicate numerical instability or inappropriate parameters. "
+                      f"Clamping to {MIN_ALLOWED_DT:.3e}.")
+        min_dt = MIN_ALLOWED_DT
+        expected_n_steps = int(np.floor(params.t_max / min_dt)) + 1
+
+    if expected_n_steps > MAX_ALLOWED_STEPS:
+        logger.warning(f"Calculated n_steps={expected_n_steps} exceeds maximum {MAX_ALLOWED_STEPS}. "
+                      f"This would require {expected_n_steps * len(x_temp) * 8 / 1e9:.2f} GB of memory. "
+                      "Adjusting dt to limit memory usage.")
+        min_dt = params.t_max / (MAX_ALLOWED_STEPS - 1)
+        expected_n_steps = MAX_ALLOWED_STEPS
+        logger.warning(f"Adjusted dt to {min_dt:.3e}, giving {expected_n_steps} time steps")
+
+    logger.info(f"Temperature sweep: using common dt={min_dt:.3e} for all temperatures (t_max={params.t_max:.3e}, expected n_steps={expected_n_steps})")
+
+    # Create common time grid for final output
+    common_time = np.linspace(0.0, params.t_max, expected_n_steps)
 
     for i_temp, T in enumerate(temperatures):
         # Check for abort
@@ -569,7 +656,7 @@ def run_temperature_sweep(
         temp_params = SimParams(
             layers=modified_layers,
             Cs=params.Cs,
-            dt=min_dt,  # Use common dt for all temperatures
+            dt=params.dt,  # Let run_simulation determine optimal dt for this temperature
             t_max=params.t_max,
             bc_right=params.bc_right,
             probe_position=params.probe_position,
@@ -590,7 +677,13 @@ def run_temperature_sweep(
             abort_event=abort_event,
         )
 
-        results_by_temp[T] = result
+        # Interpolate result onto common time grid if needed
+        if not np.array_equal(result["t"], common_time):
+            logger.info(f"  T={T:.1f}K: Interpolating from {len(result['t'])} to {len(common_time)} time points")
+            result_interp = _interpolate_to_common_time(result, common_time)
+            results_by_temp[T] = result_interp
+        else:
+            results_by_temp[T] = result
 
     # Final progress
     if progress_callback is not None:
