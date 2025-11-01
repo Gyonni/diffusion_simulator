@@ -357,14 +357,32 @@ def save_temperature_sweep_excel(
         x = temp_result["x"]
         C_xt = temp_result["C_xt"]
 
-        # Headers: x, then C(x, t_i) for each time
-        conc_headers = ["Position x [m]"] + [f"C(x, t={t[i]:.6e}s) [mol/m^3]" for i in range(len(t))]
-        ws_conc.append(conc_headers)
+        # Excel has a maximum of 16,384 columns (XFD)
+        # If we have too many time steps, transpose the data structure
+        MAX_EXCEL_COLS = 16384
+        n_time = len(t)
+        n_x = len(x)
 
-        # Data rows: each row is one position with concentrations at all times
-        for i_x in range(len(x)):
-            row = [x[i_x]] + [C_xt[i_t, i_x] for i_t in range(len(t))]
-            ws_conc.append(row)
+        if n_time + 1 > MAX_EXCEL_COLS:
+            # Transpose: rows are times, columns are positions
+            # Headers: Time, then x positions
+            conc_headers = ["Time [s]"] + [f"C(x={x[i]:.6e}m) [mol/m^3]" for i in range(n_x)]
+            ws_conc.append(conc_headers)
+
+            # Data rows: each row is one time with concentrations at all positions
+            for i_t in range(n_time):
+                row = [t[i_t]] + [C_xt[i_t, i_x] for i_x in range(n_x)]
+                ws_conc.append(row)
+        else:
+            # Original structure: rows are positions, columns are times
+            # Headers: Position, then time steps
+            conc_headers = ["Position x [m]"] + [f"C(t={t[i]:.6e}s) [mol/m^3]" for i in range(n_time)]
+            ws_conc.append(conc_headers)
+
+            # Data rows: each row is one position with concentrations at all times
+            for i_x in range(n_x):
+                row = [x[i_x]] + [C_xt[i_t, i_x] for i_t in range(n_time)]
+                ws_conc.append(row)
 
     # Save workbook
     full_path = os.path.join(base_path, filename)

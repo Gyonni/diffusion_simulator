@@ -10,11 +10,12 @@ from matplotlib.lines import Line2D
 
 
 def create_figures() -> Tuple[plt.Figure, Dict[str, Any]]:
-    # Smaller figure size to fit controls below in screen resolution
-    fig, (ax_flux, ax_prof, ax_temp) = plt.subplots(3, 1, figsize=(9, 7), sharex=False)
-    # Increase spacing to prevent title/label overlap
-    fig.subplots_adjust(hspace=0.4, top=0.96, bottom=0.08, left=0.12, right=0.88)
+    # 4 subplots: Flux vs Time, C vs Time, C vs x, C vs T
+    fig, ((ax_flux, ax_c_time), (ax_prof, ax_temp)) = plt.subplots(2, 2, figsize=(12, 8), sharex=False)
+    # Adjust spacing
+    fig.subplots_adjust(hspace=0.3, wspace=0.3, top=0.96, bottom=0.06, left=0.08, right=0.92)
 
+    # First plot: Flux & Uptake vs Time
     ax_flux.set_title("Flux & Uptake vs Time")
     ax_flux.set_xlabel("t [s]")
     ax_flux.set_ylabel("Flux [mol/(m^2·s)]")
@@ -41,11 +42,19 @@ def create_figures() -> Tuple[plt.Figure, Dict[str, Any]]:
     line_cum_probe, = ax_flux_secondary.plot([], [], color="tab:brown", linestyle="--")
     line_cum_probe.set_label("Cumulative uptake at probe")
 
+    # Second plot: Concentration vs Time (at selected position)
+    ax_c_time.set_title("Concentration vs Time (at selected position)")
+    ax_c_time.set_xlabel("t [s]")
+    ax_c_time.set_ylabel("C [mol/m^3]")
+    line_c_time, = ax_c_time.plot([], [], color="tab:purple", marker='o', markersize=3)
+
+    # Third plot: Concentration Profile (C vs x)
     ax_prof.set_title("Concentration Profile")
     ax_prof.set_xlabel("x [m]")
     ax_prof.set_ylabel("C [mol/m^3]")
     line_prof, = ax_prof.plot([], [], color="tab:blue")
 
+    # Fourth plot: Concentration vs Temperature
     ax_temp.set_title("Concentration vs Temperature (at selected position)")
     ax_temp.set_xlabel("T [K]")
     ax_temp.set_ylabel("C [mol/m^3]")
@@ -57,6 +66,7 @@ def create_figures() -> Tuple[plt.Figure, Dict[str, Any]]:
         "ax_flux": ax_flux,
         "ax_flux_secondary": ax_flux_secondary,
         "ax_flux_legend": None,
+        "ax_c_time": ax_c_time,
         "ax_prof": ax_prof,
         "ax_temp": ax_temp,
         "line_J_surface": line_J_surface,
@@ -68,9 +78,11 @@ def create_figures() -> Tuple[plt.Figure, Dict[str, Any]]:
         "line_cum_exit": line_cum_exit,
         "line_mass_target": line_mass_target,
         "line_cum_probe": line_cum_probe,
+        "line_c_time": line_c_time,
         "line_prof": line_prof,
         "line_temp": line_temp,
         "boundary_lines": [],
+        "c_time_lines": [],
         "flux_line_keys": [
             "line_J_surface",
             "line_J_target",
@@ -172,22 +184,115 @@ def update_profile_axes(
 def update_temperature_axes(
     artists: Dict[str, Any],
     temperatures: np.ndarray,
-    concentrations: np.ndarray,
+    concentrations_list: list,
     position: float,
 ) -> None:
-    """Update temperature vs concentration plot.
+    """Update temperature vs concentration plot with multiple time series.
 
     Args:
         artists: Dictionary of matplotlib artist objects
         temperatures: Array of temperatures [K]
-        concentrations: Array of concentrations at selected position [mol/m^3]
+        concentrations_list: List of (time_value, concentration_array) tuples
+                            or single concentration array (backward compatibility)
         position: The x-position [m] where concentrations were sampled
     """
-    line = artists["line_temp"]
     ax = artists["ax_temp"]
 
-    line.set_data(temperatures, concentrations)
+    # Clear existing lines (except the original line_temp for backward compatibility)
+    if "temp_plot_lines" in artists:
+        for line in artists["temp_plot_lines"]:
+            line.remove()
+        artists["temp_plot_lines"] = []
+    else:
+        artists["temp_plot_lines"] = []
+
+    # Handle backward compatibility: if concentrations_list is a numpy array
+    if isinstance(concentrations_list, np.ndarray):
+        concentrations_list = [(None, concentrations_list)]
+
+    # Plot each time series
+    lines = []
+    labels = []
+    for time_value, concentrations in concentrations_list:
+        if time_value is None:
+            label = "Current time"
+        else:
+            label = f"t = {time_value:.3e} s"
+
+        line, = ax.plot(temperatures, concentrations, marker='o', linestyle='-', label=label)
+        lines.append(line)
+        labels.append(label)
+
+    artists["temp_plot_lines"] = lines
+
+    # Update title
     ax.set_title(f"Concentration vs Temperature (at x={position:.3e} m)")
+
+    # Add legend if multiple time series
+    if len(concentrations_list) > 1:
+        ax.legend(loc='best', fontsize=8)
+    else:
+        # Remove legend if only one series
+        if ax.get_legend() is not None:
+            ax.get_legend().remove()
+
+    ax.relim()
+    ax.autoscale_view()
+
+
+
+def update_c_time_axes(
+    artists: Dict[str, Any],
+    t: np.ndarray,
+    concentrations_list: list,
+    position: float,
+) -> None:
+    """Update concentration vs time plot with multiple temperature series.
+
+    Args:
+        artists: Dictionary of matplotlib artist objects
+        t: Time array [s]
+        concentrations_list: List of (temperature, concentration_array) tuples
+                            or single concentration array (backward compatibility)
+        position: The x-position [m] where concentrations were sampled
+    """
+    ax = artists["ax_c_time"]
+
+    # Clear existing lines
+    if "c_time_lines" in artists:
+        for line in artists["c_time_lines"]:
+            line.remove()
+        artists["c_time_lines"] = []
+    else:
+        artists["c_time_lines"] = []
+
+    # Handle backward compatibility: if concentrations_list is a numpy array
+    if isinstance(concentrations_list, np.ndarray):
+        concentrations_list = [(None, concentrations_list)]
+
+    # Plot each temperature series
+    lines = []
+    for temp_value, concentrations in concentrations_list:
+        if temp_value is None:
+            label = f"x = {position:.3e} m"
+        else:
+            label = f"T = {temp_value:.1f} K"
+
+        line, = ax.plot(t, concentrations, marker='o', markersize=3, linestyle='-', label=label)
+        lines.append(line)
+
+    artists["c_time_lines"] = lines
+
+    # Update title
+    ax.set_title(f"Concentration vs Time (at x={position:.3e} m)")
+
+    # Add legend if multiple temperature series
+    if len(concentrations_list) > 1:
+        ax.legend(loc='best', fontsize=8)
+    else:
+        # Remove legend if only one series
+        if ax.get_legend() is not None:
+            ax.get_legend().remove()
 
     ax.relim()
     ax.autoscale_view()

@@ -86,7 +86,7 @@ ARRHENIUS_R = 8.31446261815324  # J/(mol·K)
 
 from .config import Defaults, RESULTS_DIR
 from .models import LayerParam, SimParams
-from .plots import create_figures, update_flux_axes, update_profile_axes, update_temperature_axes
+from .plots import create_figures, update_flux_axes, update_profile_axes, update_temperature_axes, update_c_time_axes
 from .solver import mass_balance_diagnostics, run_simulation, run_temperature_sweep
 from .utils import (
     cumulative_trapz,
@@ -818,19 +818,25 @@ class App(tk.Tk):
         ).pack(fill=tk.X, pady=(6, 0))
 
     def _build_results_tab(self, parent: tk.Widget) -> None:
-        """Build the Results tab with visualization controls."""
-        # Flux probe
-        probe_frame = ttk.Labelframe(parent, text="Flux probe (optional)")
-        probe_frame.pack(fill=tk.X, pady=(8, 0))
+        """Build the Results tab with visualization controls organized by graph."""
 
-        row0 = ttk.Frame(probe_frame)
+        # ========== Section 1: Graph 1 - Flux & Uptake vs Time ==========
+        graph1_frame = ttk.LabelFrame(parent, text="Graph 1: Flux & Uptake vs Time", padding=4)
+        graph1_frame.pack(fill=tk.X, pady=(4, 0))
+
+        # Flux probe
+        probe_subframe = ttk.Frame(graph1_frame)
+        probe_subframe.pack(fill=tk.X, pady=2)
+        ttk.Label(probe_subframe, text="Flux probe (optional)", font=("TkDefaultFont", 9, "bold")).pack(anchor=tk.W)
+
+        row0 = ttk.Frame(probe_subframe)
         row0.pack(fill=tk.X, pady=2)
         ttk.Label(row0, text="Position [m]").pack(side=tk.LEFT, padx=2)
         self.probe_var = tk.StringVar(value="")
         ttk.Entry(row0, textvariable=self.probe_var, width=14).pack(side=tk.LEFT, padx=2)
         ttk.Button(row0, text="Plot", command=self._on_probe_update).pack(side=tk.LEFT, padx=4)
 
-        row1 = ttk.Frame(probe_frame)
+        row1 = ttk.Frame(probe_subframe)
         row1.pack(fill=tk.X, pady=2)
         ttk.Label(row1, text="Layer").pack(side=tk.LEFT, padx=2)
         self.probe_layer = ttk.Combobox(row1, state="readonly", width=18)
@@ -839,8 +845,8 @@ class App(tk.Tk):
         self._refresh_probe_layers()
 
         # Flux view selector
-        flux_select = ttk.Frame(parent)
-        flux_select.pack(fill=tk.X, pady=(10, 0))
+        flux_select = ttk.Frame(graph1_frame)
+        flux_select.pack(fill=tk.X, pady=(6, 2))
         ttk.Label(flux_select, text="Flux view").pack(side=tk.LEFT, padx=2)
         self.cmb_flux = ttk.Combobox(
             flux_select,
@@ -857,13 +863,13 @@ class App(tk.Tk):
         self.cmb_flux.pack(side=tk.LEFT, padx=4)
         self.cmb_flux.bind("<<ComboboxSelected>>", lambda _event: self._on_flux_selection())
 
-        # Temperature selection (only visible for temperature sweep)
-        temp_select = ttk.Frame(parent)
-        temp_select.pack(fill=tk.X, pady=(5, 0))
-        ttk.Label(temp_select, text="Temperature").pack(side=tk.LEFT, padx=2)
+        # Temperature selection for Graph 1 (only visible for temperature sweep)
+        temp_select_g1 = ttk.Frame(graph1_frame)
+        temp_select_g1.pack(fill=tk.X, pady=2)
+        ttk.Label(temp_select_g1, text="Temperature").pack(side=tk.LEFT, padx=2)
         self.selected_temperature = tk.StringVar()
         self.cmb_temperature = ttk.Combobox(
-            temp_select,
+            temp_select_g1,
             textvariable=self.selected_temperature,
             state="readonly",
             values=[],
@@ -872,24 +878,76 @@ class App(tk.Tk):
         self.cmb_temperature.pack(side=tk.LEFT, padx=4)
         self.cmb_temperature.bind("<<ComboboxSelected>>", lambda _event: self._on_temperature_selection())
         # Initially hide temperature selector
-        temp_select.pack_forget()
-        self.temp_select_frame = temp_select
-
-        # Temperature plot position (moved from right panel)
-        temp_position_frame = ttk.LabelFrame(parent, text="Temperature Plot Position", padding=4)
-        temp_position_frame.pack(fill=tk.X, pady=(8, 0))
-
-        ttk.Label(temp_position_frame, text="Position [m] for C vs T plot:").pack(anchor=tk.W, padx=2, pady=2)
-        self.temp_plot_position_var = tk.StringVar(value="")
-        pos_row = ttk.Frame(temp_position_frame)
-        pos_row.pack(fill=tk.X, padx=2, pady=2)
-        ttk.Entry(pos_row, textvariable=self.temp_plot_position_var, width=14).pack(side=tk.LEFT, padx=2)
-        ttk.Button(pos_row, text="Update", command=self._update_temperature_plot).pack(side=tk.LEFT, padx=4)
+        temp_select_g1.pack_forget()
+        self.temp_select_frame = temp_select_g1
 
         # Flux value display
-        self.flux_value_label = ttk.Label(parent, text="Flux: -, Cum: -", foreground="gray25", justify=tk.LEFT, wraplength=260)
-        self.flux_value_label.pack(fill=tk.X, pady=(10, 0))
+        self.flux_value_label = ttk.Label(graph1_frame, text="Flux: -, Cum: -", foreground="gray25", justify=tk.LEFT, wraplength=260)
+        self.flux_value_label.pack(fill=tk.X, pady=(4, 0))
         self._update_flux_value_label()
+
+        # ========== Section 2: Graph 2 - C vs Time ==========
+        graph2_frame = ttk.LabelFrame(parent, text="Graph 2: Concentration vs Time", padding=4)
+        graph2_frame.pack(fill=tk.X, pady=(6, 0))
+
+        ttk.Label(graph2_frame, text="Position [m]:").pack(anchor=tk.W, padx=2, pady=2)
+        self.c_time_position_var = tk.StringVar(value="")
+        pos_row_g2 = ttk.Frame(graph2_frame)
+        pos_row_g2.pack(fill=tk.X, padx=2, pady=2)
+        ttk.Entry(pos_row_g2, textvariable=self.c_time_position_var, width=14).pack(side=tk.LEFT, padx=2)
+
+        ttk.Label(graph2_frame, text="Temperature(s) [K, comma-separated]:").pack(anchor=tk.W, padx=2, pady=(6, 2))
+        self.c_time_temps_var = tk.StringVar(value="")
+        temp_row_g2 = ttk.Frame(graph2_frame)
+        temp_row_g2.pack(fill=tk.X, padx=2, pady=2)
+        ttk.Entry(temp_row_g2, textvariable=self.c_time_temps_var, width=14).pack(side=tk.LEFT, padx=2)
+        ttk.Button(temp_row_g2, text="Update", command=self._update_c_time_plot).pack(side=tk.LEFT, padx=4)
+
+        # ========== Section 3: Graph 3 - Concentration Profile (C vs x) ==========
+        graph3_frame = ttk.LabelFrame(parent, text="Graph 3: Concentration Profile (C vs x)", padding=4)
+        graph3_frame.pack(fill=tk.X, pady=(6, 0))
+
+        ttk.Label(graph3_frame, text="Time [s]:").pack(anchor=tk.W, padx=2, pady=2)
+        self.profile_time_var = tk.StringVar(value="")
+        time_row_g3 = ttk.Frame(graph3_frame)
+        time_row_g3.pack(fill=tk.X, padx=2, pady=2)
+        ttk.Entry(time_row_g3, textvariable=self.profile_time_var, width=14).pack(side=tk.LEFT, padx=2)
+        ttk.Button(time_row_g3, text="Go to time", command=self._go_to_time).pack(side=tk.LEFT, padx=4)
+
+        # Temperature selection for Graph 3 (only visible for temperature sweep)
+        temp_select_g3 = ttk.Frame(graph3_frame)
+        temp_select_g3.pack(fill=tk.X, pady=(6, 2))
+        ttk.Label(temp_select_g3, text="Temperature").pack(side=tk.LEFT, padx=2)
+        self.selected_temperature_g3 = tk.StringVar()
+        self.cmb_temperature_g3 = ttk.Combobox(
+            temp_select_g3,
+            textvariable=self.selected_temperature_g3,
+            state="readonly",
+            values=[],
+            width=12,
+        )
+        self.cmb_temperature_g3.pack(side=tk.LEFT, padx=4)
+        self.cmb_temperature_g3.bind("<<ComboboxSelected>>", lambda _event: self._on_temperature_selection_g3())
+        # Initially hide temperature selector
+        temp_select_g3.pack_forget()
+        self.temp_select_frame_g3 = temp_select_g3
+
+        # ========== Section 4: Graph 4 - C vs Temperature ==========
+        graph4_frame = ttk.LabelFrame(parent, text="Graph 4: Concentration vs Temperature", padding=4)
+        graph4_frame.pack(fill=tk.X, pady=(6, 0))
+
+        ttk.Label(graph4_frame, text="Position [m]:").pack(anchor=tk.W, padx=2, pady=2)
+        self.temp_plot_position_var = tk.StringVar(value="")
+        pos_row_g4 = ttk.Frame(graph4_frame)
+        pos_row_g4.pack(fill=tk.X, padx=2, pady=2)
+        ttk.Entry(pos_row_g4, textvariable=self.temp_plot_position_var, width=14).pack(side=tk.LEFT, padx=2)
+
+        ttk.Label(graph4_frame, text="Time(s) [s, comma-separated]:").pack(anchor=tk.W, padx=2, pady=(6, 2))
+        self.temp_plot_times_var = tk.StringVar(value="")
+        time_row_g4 = ttk.Frame(graph4_frame)
+        time_row_g4.pack(fill=tk.X, padx=2, pady=2)
+        ttk.Entry(time_row_g4, textvariable=self.temp_plot_times_var, width=14).pack(side=tk.LEFT, padx=2)
+        ttk.Button(time_row_g4, text="Update", command=self._update_temperature_plot).pack(side=tk.LEFT, padx=4)
 
     def _gather_params(self) -> Optional[SimParams]:
         try:
@@ -1051,12 +1109,18 @@ class App(tk.Tk):
             self.selected_temperature.set(temp_values[0])
             self.temp_select_frame.pack(fill=tk.X, pady=(5, 0))
 
+            # Setup Graph 3 temperature selector (synced with Graph 1)
+            self.cmb_temperature_g3["values"] = temp_values
+            self.selected_temperature_g3.set(temp_values[0])
+            self.temp_select_frame_g3.pack(fill=tk.X, pady=(6, 2))
+
             # For temperature sweep, use the first temperature's data for plotting
             first_T = temps[0]
             plot_data = r["results_by_temp"][first_T]
         else:
-            # Hide temperature selector for single simulation
+            # Hide temperature selectors for single simulation
             self.temp_select_frame.pack_forget()
+            self.temp_select_frame_g3.pack_forget()
             plot_data = r
 
         self._refresh_probe_layers()
@@ -1299,7 +1363,7 @@ class App(tk.Tk):
         self.canvas.draw_idle()
 
     def _update_temperature_plot(self) -> None:
-        """Update the temperature vs concentration plot at the selected position."""
+        """Update the temperature vs concentration plot at the selected position and time(s)."""
         if not self.results or not self.is_temperature_sweep:
             messagebox.showinfo("No data", "Temperature plot is only available for temperature sweep simulations.", parent=self)
             return
@@ -1318,18 +1382,145 @@ class App(tk.Tk):
         r = self.results
         temperatures = r["temperatures"]
         x = r["x"]
-        time_idx = self._current_time_index
+        t = r["t"]
 
         # Find nearest grid point to requested position
         x_idx = np.argmin(np.abs(x - position))
         actual_position = x[x_idx]
 
-        # Extract concentrations at this position for all temperatures at current time
-        concentrations = r["C_Txt"][:, time_idx, x_idx]
+        # Parse time values (comma-separated)
+        times_text = self.temp_plot_times_var.get().strip()
+        if not times_text:
+            # Default: use current time slider position
+            time_indices = [self._current_time_index]
+            time_values = [t[self._current_time_index]]
+        else:
+            try:
+                time_values = [float(s.strip()) for s in times_text.split(",") if s.strip()]
+                if not time_values:
+                    raise ValueError("No valid time values")
 
-        # Update the plot
-        update_temperature_axes(self.artists, temperatures, concentrations, actual_position)
+                # Find nearest time indices
+                time_indices = [np.argmin(np.abs(t - tv)) for tv in time_values]
+                # Get actual time values from grid
+                time_values = [t[idx] for idx in time_indices]
+            except ValueError as e:
+                messagebox.showerror("Invalid input", f"Time values must be comma-separated numbers.\nError: {e}", parent=self)
+                return
+
+        # Extract concentrations for all temperatures at each requested time
+        # concentrations_list: list of (time_value, concentration_array)
+        concentrations_list = [(time_values[i], r["C_Txt"][:, time_indices[i], x_idx]) for i in range(len(time_values))]
+
+        # Update the plot with multiple time series
+        update_temperature_axes(self.artists, temperatures, concentrations_list, actual_position)
         self.canvas.draw_idle()
+
+    def _update_c_time_plot(self) -> None:
+        """Update the C vs Time plot at the selected position for selected temperature(s)."""
+        if not self.results or not self.is_temperature_sweep:
+            messagebox.showinfo("No data", "C vs Time plot is only available for temperature sweep simulations.", parent=self)
+            return
+
+        position_text = self.c_time_position_var.get().strip()
+        if not position_text:
+            messagebox.showwarning("Input required", "Please enter a position [m] for the C vs Time plot.", parent=self)
+            return
+
+        try:
+            position = float(position_text)
+        except ValueError:
+            messagebox.showerror("Invalid input", "Position must be a valid number.", parent=self)
+            return
+
+        r = self.results
+        x = r["x"]
+        t = r["t"]
+
+        # Find nearest grid point to requested position
+        x_idx = np.argmin(np.abs(x - position))
+        actual_position = x[x_idx]
+
+        # Parse temperature values (comma-separated)
+        temps_text = self.c_time_temps_var.get().strip()
+        if not temps_text:
+            # Default: use current selected temperature
+            selected_T = self._get_selected_temperature()
+            temperature_values = [selected_T]
+        else:
+            try:
+                temperature_values = [float(s.strip()) for s in temps_text.split(",") if s.strip()]
+                if not temperature_values:
+                    raise ValueError("No valid temperature values")
+
+                # Validate temperatures exist in results
+                available_temps = r["temperatures"]
+                for temp_val in temperature_values:
+                    if temp_val not in available_temps:
+                        # Find nearest available temperature
+                        nearest_T = available_temps[np.argmin(np.abs(available_temps - temp_val))]
+                        messagebox.showwarning(
+                            "Temperature not found",
+                            f"Temperature {temp_val} K not in simulation. Using nearest: {nearest_T} K",
+                            parent=self
+                        )
+                        temperature_values[temperature_values.index(temp_val)] = nearest_T
+            except ValueError as e:
+                messagebox.showerror("Invalid input", f"Temperature values must be comma-separated numbers.\nError: {e}", parent=self)
+                return
+
+        # Extract concentrations for each temperature across all time
+        # concentrations_list: list of (temperature_value, concentration_array)
+        concentrations_list = [(temp_val, r["results_by_temp"][temp_val]["C_xt"][:, x_idx]) for temp_val in temperature_values]
+
+        # Update the plot with multiple temperature series
+        update_c_time_axes(self.artists, t, concentrations_list, actual_position)
+        self.canvas.draw_idle()
+
+    def _go_to_time(self) -> None:
+        """Go to the specified time in seconds (Graph 3 control)."""
+        if not self.results:
+            messagebox.showinfo("No data", "Please run a simulation first.", parent=self)
+            return
+
+        time_text = self.profile_time_var.get().strip()
+        if not time_text:
+            messagebox.showwarning("Input required", "Please enter a time [s] to go to.", parent=self)
+            return
+
+        try:
+            target_time = float(time_text)
+        except ValueError:
+            messagebox.showerror("Invalid input", "Time must be a valid number.", parent=self)
+            return
+
+        # Get time array from current results
+        if self.is_temperature_sweep:
+            selected_T = self._get_selected_temperature()
+            t = self.results["results_by_temp"][selected_T]["t"]
+        else:
+            t = self.results["t"]
+
+        # Find nearest time index
+        time_idx = np.argmin(np.abs(t - target_time))
+        actual_time = t[time_idx]
+
+        # Update to this time index
+        self._set_time_index(time_idx)
+
+        # Provide feedback
+        messagebox.showinfo("Time set", f"Moved to nearest time: {actual_time:.6g} s (index {time_idx})", parent=self)
+
+    def _on_temperature_selection_g3(self) -> None:
+        """Handle temperature selection change for Graph 3."""
+        if not self.results or not self.is_temperature_sweep:
+            return
+        # Sync with main temperature selector
+        temp_str = self.selected_temperature_g3.get()
+        if temp_str:
+            self.selected_temperature.set(temp_str)
+        # Refresh profile plot
+        self._on_time_change()
 
 
     def _configure_time_controls(self, max_index: int) -> None:

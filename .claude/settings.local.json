@@ -25,7 +25,15 @@
       "Bash(\"venv/Scripts/python.exe\" run_tests.py)",
       "Bash(\"venv/Scripts/python.exe\" -m pip install:*)",
       "Bash(\"venv/Scripts/python.exe\" -m diffreact_gui.main)",
-      "Bash(nul)"
+      "Bash(nul)",
+      "Bash(\"venv/Scripts/python.exe\" benchmark_phase1.py)",
+      "Bash(\"venv/Scripts/python.exe\" benchmark_phase2.py)",
+      "Bash(\"venv/Scripts/python.exe\" benchmark_large_problem.py)",
+      "Bash(diffreact_gui/plots.py)",
+      "Bash(cat:*)",
+      "Bash(del temp_addition.txt)",
+      "Bash(diffreact_guiplots.py)",
+      "Bash(if exist temp_addition.txt del temp_addition.txt)"
     ],
     "deny": [],
     "ask": []
