@@ -33,7 +33,12 @@
       "Bash(cat:*)",
       "Bash(del temp_addition.txt)",
       "Bash(diffreact_guiplots.py)",
-      "Bash(if exist temp_addition.txt del temp_addition.txt)"
+      "Bash(if exist temp_addition.txt del temp_addition.txt)",
+      "Bash(\"venv/Scripts/python.exe\" -m pytest tests/test_analysis.py -v)",
+      "Bash(\"venv/Scripts/python.exe\" -m pip install scipy)",
+      "Bash(del temp_plot_additions.txt)",
+      "Bash(git checkout:*)",
+      "Bash(timeout /t 3)"
     ],
     "deny": [],
     "ask": []

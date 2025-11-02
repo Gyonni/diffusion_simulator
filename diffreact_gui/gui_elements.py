@@ -14,6 +14,8 @@ import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 
+from .analysis_ui import AnalysisTab
+
 _HTML_AVAILABLE = False
 try:  # pragma: no cover - optional dependency
     from tkhtmlview import HTMLLabel
@@ -108,7 +110,7 @@ class MaterialLibraryDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Material Library")
-        self.geometry("500x400")
+        self.geometry("700x550")
         self.transient(parent)
         self.grab_set()
 
@@ -116,14 +118,14 @@ class MaterialLibraryDialog(tk.Toplevel):
         self.materials = load_materials_library()
 
         # Create UI
-        main_frame = ttk.Frame(self, padding=10)
+        main_frame = ttk.Frame(self, padding=15)
         main_frame.pack(fill="both", expand=True)
 
         # Left: List of materials
         left_frame = ttk.Frame(main_frame)
         left_frame.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
-        ttk.Label(left_frame, text="Available Materials:").pack(anchor="w")
+        ttk.Label(left_frame, text="Available Materials:", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
 
         # Listbox with scrollbar
         list_frame = ttk.Frame(left_frame)
@@ -132,7 +134,7 @@ class MaterialLibraryDialog(tk.Toplevel):
         scrollbar = ttk.Scrollbar(list_frame)
         scrollbar.pack(side="right", fill="y")
 
-        self.listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set)
+        self.listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set, font=("TkDefaultFont", 11))
         self.listbox.pack(side="left", fill="both", expand=True)
         scrollbar.config(command=self.listbox.yview)
 
@@ -146,18 +148,22 @@ class MaterialLibraryDialog(tk.Toplevel):
         right_frame = ttk.Frame(main_frame)
         right_frame.pack(side="right", fill="both", expand=True)
 
-        ttk.Label(right_frame, text="Material Properties:").pack(anchor="w")
+        ttk.Label(right_frame, text="Material Properties:", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
 
-        self.props_text = scrolledtext.ScrolledText(right_frame, wrap="word", height=15, width=30, state="disabled")
+        self.props_text = scrolledtext.ScrolledText(right_frame, wrap="word", height=15, width=30, state="disabled", font=("TkDefaultFont", 11))
         self.props_text.pack(fill="both", expand=True, pady=4)
 
         # Buttons
         btn_frame = ttk.Frame(self, padding=10)
         btn_frame.pack(fill="x")
 
-        ttk.Button(btn_frame, text="Apply", command=self._apply).pack(side="right", padx=2)
-        ttk.Button(btn_frame, text="Delete", command=self._delete).pack(side="right", padx=2)
-        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side="right", padx=2)
+        # Style for larger buttons
+        style = ttk.Style()
+        style.configure('Large.TButton', padding=8, font=("TkDefaultFont", 11))
+
+        ttk.Button(btn_frame, text="Apply", command=self._apply, style='Large.TButton').pack(side="right", padx=5)
+        ttk.Button(btn_frame, text="Delete", command=self._delete, style='Large.TButton').pack(side="right", padx=5)
+        ttk.Button(btn_frame, text="Cancel", command=self.destroy, style='Large.TButton').pack(side="right", padx=5)
 
     def _on_select(self, event=None):
         """Display selected material properties."""
@@ -234,8 +240,13 @@ class LayerTable(ttk.Frame):
     ) -> None:
         super().__init__(master)
         self._on_layers_changed = on_layers_changed
-        self._use_arrhenius = tk.BooleanVar(value=False)
+        self._use_arrhenius = tk.BooleanVar(value=True)  # Default to Arrhenius mode
         self._layer_data: List[LayerParam] = []  # Store full LayerParam objects
+
+        # Configure treeview font
+        style = ttk.Style()
+        style.configure('Treeview', font=("TkDefaultFont", 11), rowheight=28)
+        style.configure('Treeview.Heading', font=("TkDefaultFont", 11, "bold"))
 
         self.tree = ttk.Treeview(self, columns=self.columns, show="headings", height=6)
         for col, heading in zip(
@@ -243,16 +254,16 @@ class LayerTable(ttk.Frame):
             ["Name", "Thickness [m]", "D [m^2/s]", "Ea [eV]", "k [1/s]", "Nodes"],
         ):
             self.tree.heading(col, text=heading)
-            self.tree.column(col, width=100, anchor=tk.CENTER)
+            self.tree.column(col, width=120, anchor=tk.CENTER)
         self.tree.pack(fill=tk.BOTH, expand=True)
 
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
         # Mode selector
         mode_frame = ttk.Frame(self)
-        mode_frame.pack(fill=tk.X, pady=4)
-        ttk.Radiobutton(mode_frame, text="Use D directly", variable=self._use_arrhenius, value=False, command=self._toggle_input_mode).pack(side=tk.LEFT, padx=4)
-        ttk.Radiobutton(mode_frame, text="Use D0 + Ea (Arrhenius)", variable=self._use_arrhenius, value=True, command=self._toggle_input_mode).pack(side=tk.LEFT, padx=4)
+        mode_frame.pack(fill=tk.X, pady=6)
+        ttk.Radiobutton(mode_frame, text="Use D directly", variable=self._use_arrhenius, value=False, command=self._toggle_input_mode).pack(side=tk.LEFT, padx=6)
+        ttk.Radiobutton(mode_frame, text="Use D0 + Ea (Arrhenius)", variable=self._use_arrhenius, value=True, command=self._toggle_input_mode).pack(side=tk.LEFT, padx=6)
 
         self.entry_vars = {
             "name": tk.StringVar(value="Layer"),
@@ -265,63 +276,70 @@ class LayerTable(ttk.Frame):
         }
 
         form = ttk.Frame(self)
-        form.pack(fill=tk.X, pady=4)
+        form.pack(fill=tk.X, pady=6)
+
+        label_font = ("TkDefaultFont", 11)
+        entry_font = ("TkDefaultFont", 11)
 
         # Common fields
         row = 0
-        ttk.Label(form, text="Name").grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        ttk.Entry(form, textvariable=self.entry_vars["name"], width=18).grid(row=row, column=1, padx=2, pady=2)
+        ttk.Label(form, text="Name", font=label_font).grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        ttk.Entry(form, textvariable=self.entry_vars["name"], width=20, font=entry_font).grid(row=row, column=1, padx=4, pady=4)
 
         row += 1
-        ttk.Label(form, text="Thickness [m]").grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        ttk.Entry(form, textvariable=self.entry_vars["thickness"], width=18).grid(row=row, column=1, padx=2, pady=2)
+        ttk.Label(form, text="Thickness [m]", font=label_font).grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        ttk.Entry(form, textvariable=self.entry_vars["thickness"], width=20, font=entry_font).grid(row=row, column=1, padx=4, pady=4)
 
         row += 1
-        self.lbl_diffusivity = ttk.Label(form, text="D [m^2/s]")
-        self.lbl_diffusivity.grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        self.entry_diffusivity = ttk.Entry(form, textvariable=self.entry_vars["diffusivity"], width=18)
-        self.entry_diffusivity.grid(row=row, column=1, padx=2, pady=2)
+        self.lbl_diffusivity = ttk.Label(form, text="D [m^2/s]", font=label_font)
+        self.lbl_diffusivity.grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        self.entry_diffusivity = ttk.Entry(form, textvariable=self.entry_vars["diffusivity"], width=20, font=entry_font)
+        self.entry_diffusivity.grid(row=row, column=1, padx=4, pady=4)
 
         row += 1
-        self.lbl_D0 = ttk.Label(form, text="D0 [m^2/s]")
-        self.lbl_D0.grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        self.entry_D0 = ttk.Entry(form, textvariable=self.entry_vars["D0"], width=18)
-        self.entry_D0.grid(row=row, column=1, padx=2, pady=2)
+        self.lbl_D0 = ttk.Label(form, text="D0 [m^2/s]", font=label_font)
+        self.lbl_D0.grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        self.entry_D0 = ttk.Entry(form, textvariable=self.entry_vars["D0"], width=20, font=entry_font)
+        self.entry_D0.grid(row=row, column=1, padx=4, pady=4)
 
         row += 1
-        self.lbl_Ea = ttk.Label(form, text="Ea [eV]")
-        self.lbl_Ea.grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        self.entry_Ea = ttk.Entry(form, textvariable=self.entry_vars["Ea"], width=18)
-        self.entry_Ea.grid(row=row, column=1, padx=2, pady=2)
+        self.lbl_Ea = ttk.Label(form, text="Ea [eV]", font=label_font)
+        self.lbl_Ea.grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        self.entry_Ea = ttk.Entry(form, textvariable=self.entry_vars["Ea"], width=20, font=entry_font)
+        self.entry_Ea.grid(row=row, column=1, padx=4, pady=4)
 
         row += 1
-        ttk.Label(form, text="k [1/s]").grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        ttk.Entry(form, textvariable=self.entry_vars["reaction"], width=18).grid(row=row, column=1, padx=2, pady=2)
+        ttk.Label(form, text="k [1/s]", font=label_font).grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        ttk.Entry(form, textvariable=self.entry_vars["reaction"], width=20, font=entry_font).grid(row=row, column=1, padx=4, pady=4)
 
         row += 1
-        ttk.Label(form, text="Nodes").grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        ttk.Entry(form, textvariable=self.entry_vars["nodes"], width=18).grid(row=row, column=1, padx=2, pady=2)
+        ttk.Label(form, text="Nodes", font=label_font).grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        ttk.Entry(form, textvariable=self.entry_vars["nodes"], width=20, font=entry_font).grid(row=row, column=1, padx=4, pady=4)
 
         form.grid_columnconfigure(1, weight=1)
 
         # Initially show D input mode
         self._toggle_input_mode()
 
+        # Button style
+        btn_style = ttk.Style()
+        btn_style.configure('Medium.TButton', padding=6, font=("TkDefaultFont", 11))
+
         btn_bar = ttk.Frame(self)
-        btn_bar.pack(fill=tk.X, pady=4)
-        ttk.Button(btn_bar, text="Add", command=self._add).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_bar, text="Update", command=self._update).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_bar, text="Remove", command=self._remove).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_bar, text="↑", width=3, command=lambda: self._move(-1)).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_bar, text="↓", width=3, command=lambda: self._move(1)).pack(side=tk.LEFT, padx=2)
+        btn_bar.pack(fill=tk.X, pady=6)
+        ttk.Button(btn_bar, text="Add", command=self._add, style='Medium.TButton').pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_bar, text="Update", command=self._update, style='Medium.TButton').pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_bar, text="Remove", command=self._remove, style='Medium.TButton').pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_bar, text="↑", width=3, command=lambda: self._move(-1), style='Medium.TButton').pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_bar, text="↓", width=3, command=lambda: self._move(1), style='Medium.TButton').pack(side=tk.LEFT, padx=4)
 
         # Material Library
         lib_frame = ttk.Labelframe(self, text="Material Library")
-        lib_frame.pack(fill=tk.X, pady=4)
+        lib_frame.pack(fill=tk.X, pady=6)
         lib_row1 = ttk.Frame(lib_frame)
-        lib_row1.pack(fill=tk.X, padx=4, pady=2)
-        ttk.Button(lib_row1, text="Save to Library", command=self._save_to_library).pack(side=tk.LEFT, padx=2)
-        ttk.Button(lib_row1, text="Load from Library", command=self._load_from_library).pack(side=tk.LEFT, padx=2)
+        lib_row1.pack(fill=tk.X, padx=6, pady=4)
+        ttk.Button(lib_row1, text="Save to Library", command=self._save_to_library, style='Medium.TButton').pack(side=tk.LEFT, padx=4)
+        ttk.Button(lib_row1, text="Load from Library", command=self._load_from_library, style='Medium.TButton').pack(side=tk.LEFT, padx=4)
 
         for layer in layers:
             self._insert_layer(layer)
@@ -596,6 +614,18 @@ class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Multilayer Diffusion–Reaction Simulator")
+
+        # Set window size to 80% of screen size
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        window_width = int(screen_width * 0.8)
+        window_height = int(screen_height * 0.8)
+
+        # Center the window
+        x_position = (screen_width - window_width) // 2
+        y_position = (screen_height - window_height) // 2
+
+        self.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self.results: Optional[dict] = None
@@ -627,23 +657,34 @@ class App(tk.Tk):
         self.control_bar = ttk.Frame(self.frm_left)
         self.control_bar.pack(side="top", fill="x", pady=(0, 8))
 
+        # Configure button style for control bar
+        ctrl_btn_style = ttk.Style()
+        ctrl_btn_style.configure('Control.TButton', padding=8, font=("TkDefaultFont", 12, "bold"))
+
         # Create symbol buttons (▶ for Run, ■ for Stop, 💾 for Save)
-        self.btn_run = ttk.Button(self.control_bar, text="▶ Run", width=8, command=self._on_run)
-        self.btn_run.pack(side=tk.LEFT, padx=2)
+        self.btn_run = ttk.Button(self.control_bar, text="▶ Run", width=10, command=self._on_run, style='Control.TButton')
+        self.btn_run.pack(side=tk.LEFT, padx=4)
 
-        self.btn_abort = ttk.Button(self.control_bar, text="■ Stop", width=8, command=self._on_abort, state=tk.DISABLED)
-        self.btn_abort.pack(side=tk.LEFT, padx=2)
+        self.btn_abort = ttk.Button(self.control_bar, text="■ Stop", width=10, command=self._on_abort, state=tk.DISABLED, style='Control.TButton')
+        self.btn_abort.pack(side=tk.LEFT, padx=4)
 
-        self.btn_save = ttk.Button(self.control_bar, text="💾 Save", width=8, command=self._export_flux)
-        self.btn_save.pack(side=tk.LEFT, padx=2)
+        self.btn_save = ttk.Button(self.control_bar, text="💾 Save", width=10, command=self._export_flux, style='Control.TButton')
+        self.btn_save.pack(side=tk.LEFT, padx=4)
 
         # Progress bar in control bar
-        self.progress_bar = ttk.Progressbar(self.control_bar, variable=self._progress_value, maximum=100.0, length=120)
-        self.progress_bar.pack(side=tk.LEFT, padx=4, fill=tk.X, expand=True)
+        self.progress_bar = ttk.Progressbar(self.control_bar, variable=self._progress_value, maximum=100.0, length=150)
+        self.progress_bar.pack(side=tk.LEFT, padx=6, fill=tk.X, expand=True)
 
-        # Tab control for Setup / Results
+        # Tab control for Setup / Results / Analysis
+        # Configure notebook font
+        tab_style = ttk.Style()
+        tab_style.configure('TNotebook.Tab', padding=[15, 8], font=("TkDefaultFont", 11, "bold"))
+
         self.notebook = ttk.Notebook(self.frm_left)
         self.notebook.pack(side="top", fill="both", expand=True)
+
+        # Bind tab change event
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
         # Setup tab (simulation parameters)
         self.setup_frame = ttk.Frame(self.notebook)
@@ -652,6 +693,31 @@ class App(tk.Tk):
         # Results tab (visualization controls)
         self.results_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.results_frame, text="Results")
+
+        # Analysis tab (doping analysis) - controls in left panel
+        self.analysis_controls_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.analysis_controls_frame, text="Analysis")
+
+        # Create canvas and scrollbar for analysis tab
+        self.canvas_analysis = tk.Canvas(self.analysis_controls_frame, width=550)
+        self.scrollbar_analysis = ttk.Scrollbar(self.analysis_controls_frame, orient="vertical", command=self.canvas_analysis.yview)
+        self.scrollable_analysis = ttk.Frame(self.canvas_analysis)
+
+        self.scrollable_analysis.bind(
+            "<Configure>",
+            lambda e: self.canvas_analysis.configure(scrollregion=self.canvas_analysis.bbox("all"))
+        )
+
+        self.canvas_analysis.create_window((0, 0), window=self.scrollable_analysis, anchor="nw")
+        self.canvas_analysis.configure(yscrollcommand=self.scrollbar_analysis.set)
+
+        # Mouse wheel scrolling for analysis tab
+        def _on_mousewheel_analysis(event):
+            self.canvas_analysis.yview_scroll(int(-1*(event.delta/120)), "units")
+        self.canvas_analysis.bind_all("<MouseWheel>", _on_mousewheel_analysis)
+
+        self.canvas_analysis.pack(side="left", fill="both", expand=True)
+        self.scrollbar_analysis.pack(side="right", fill="y")
 
         # Create canvas and scrollbar for setup tab
         self.canvas_setup = tk.Canvas(self.setup_frame, width=550)
@@ -698,15 +764,24 @@ class App(tk.Tk):
         # Build UI elements
         self._build_setup_tab(self.scrollable_setup)
         self._build_results_tab(self.scrollable_results)
+        self._build_analysis_tab(self.scrollable_analysis)
 
+        # Create two right panels: one for simulation, one for analysis
+        # Simulation results panel
+        self.sim_results_panel = ttk.Frame(self.frm_right)
+        self.sim_results_panel.pack(fill=tk.BOTH, expand=True)
+
+        # Analysis panel (initially hidden)
+        self.analysis_panel = ttk.Frame(self.frm_right)
+        # Don't pack it yet - will be shown when Analysis tab is selected
+
+        # Build simulation graphs in sim_results_panel
         fig, artists = create_figures()
         self.artists = artists
-        self.canvas = FigureCanvasTkAgg(fig, master=self.frm_right)
+        self.canvas = FigureCanvasTkAgg(fig, master=self.sim_results_panel)
         self.canvas.draw_idle()
-        # Use fill=BOTH but expand=False to prevent graph from taking all space
-        # This ensures controls below remain visible
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=False)
-        self.toolbar = NavigationToolbar2Tk(self.canvas, self.frm_right)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        self.toolbar = NavigationToolbar2Tk(self.canvas, self.sim_results_panel)
         self.toolbar.update()
         self._flux_visibility_map = {
             "Surface (x=0)": ("line_J_surface", "line_cum_surface"),
@@ -715,10 +790,11 @@ class App(tk.Tk):
             "Probe (custom)": ("line_J_probe", "line_cum_probe"),
         }
 
-        self.time_label = ttk.Label(self.frm_right, text="Time [s]: 0.0")
+        # Time controls in sim_results_panel
+        self.time_label = ttk.Label(self.sim_results_panel, text="Time [s]: 0.0", font=("TkDefaultFont", 11))
         self.time_label.pack(fill=tk.X, pady=(8, 0))
         self.sld_time = tk.Scale(
-            self.frm_right,
+            self.sim_results_panel,
             from_=0,
             to=0,
             orient=tk.HORIZONTAL,
@@ -729,10 +805,14 @@ class App(tk.Tk):
         )
         self.sld_time.pack(fill=tk.X)
 
-        time_ctrl = ttk.Frame(self.frm_right)
+        time_ctrl = ttk.Frame(self.sim_results_panel)
         time_ctrl.pack(fill=tk.X, pady=(4, 6))
-        self.btn_time_prev = ttk.Button(time_ctrl, text="◀", width=3, command=lambda: self._step_time(-1), state="disabled")
-        self.btn_time_prev.pack(side=tk.LEFT, padx=2)
+
+        time_btn_style = ttk.Style()
+        time_btn_style.configure('Time.TButton', padding=6, font=("TkDefaultFont", 11))
+
+        self.btn_time_prev = ttk.Button(time_ctrl, text="◀", width=4, command=lambda: self._step_time(-1), state="disabled", style='Time.TButton')
+        self.btn_time_prev.pack(side=tk.LEFT, padx=4)
 
         self.time_spin_var = tk.StringVar(value="0")
         self.spn_time = ttk.Spinbox(
@@ -740,17 +820,44 @@ class App(tk.Tk):
             from_=0,
             to=0,
             textvariable=self.time_spin_var,
-            width=8,
+            width=10,
             justify="center",
             state="disabled",
             wrap=False,
             command=self._on_spinbox_change,
+            font=("TkDefaultFont", 11),
         )
-        self.spn_time.pack(side=tk.LEFT, expand=True, fill=tk.X)
+        self.spn_time.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=4)
         self.spn_time.bind("<Return>", self._on_spinbox_event)
 
-        self.btn_time_next = ttk.Button(time_ctrl, text="▶", width=3, command=lambda: self._step_time(1), state="disabled")
-        self.btn_time_next.pack(side=tk.LEFT, padx=2)
+        self.btn_time_next = ttk.Button(time_ctrl, text="▶", width=4, command=lambda: self._step_time(1), state="disabled", style='Time.TButton')
+        self.btn_time_next.pack(side=tk.LEFT, padx=4)
+
+        # Build Analysis graph in analysis_panel (graph only, controls are in left panel)
+        from .plots import create_analysis_figure
+        analysis_fig, ax_sim, ax_exp, analysis_artists = create_analysis_figure()
+        self.analysis_fig = analysis_fig
+        self.analysis_artists = analysis_artists
+
+        self.analysis_canvas = FigureCanvasTkAgg(analysis_fig, master=self.analysis_panel)
+        self.analysis_canvas.draw_idle()
+        self.analysis_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        self.analysis_toolbar = NavigationToolbar2Tk(self.analysis_canvas, self.analysis_panel)
+        self.analysis_toolbar.update()
+
+    def _on_tab_changed(self, event=None):
+        """Handle tab change events to switch between simulation and analysis panels."""
+        selected_tab = self.notebook.select()
+        tab_text = self.notebook.tab(selected_tab, "text")
+
+        if tab_text == "Analysis":
+            # Switch to analysis panel
+            self.sim_results_panel.pack_forget()
+            self.analysis_panel.pack(fill=tk.BOTH, expand=True)
+        else:
+            # Switch to simulation results panel (Setup or Results tab)
+            self.analysis_panel.pack_forget()
+            self.sim_results_panel.pack(fill=tk.BOTH, expand=True)
 
     def _refresh_probe_layers(self) -> None:
         if not hasattr(self, "probe_layer"):
@@ -768,6 +875,9 @@ class App(tk.Tk):
         """Build the Setup tab with simulation parameters."""
         defaults = Defaults()
 
+        label_font = ("TkDefaultFont", 11)
+        entry_font = ("TkDefaultFont", 11)
+
         self.vars = {
             "Cs": tk.DoubleVar(value=defaults.Cs),
             "dt": tk.DoubleVar(value=defaults.dt),
@@ -780,74 +890,88 @@ class App(tk.Tk):
             ("Total time t_max [s]", "t_max"),
         ]:
             frm = ttk.Frame(parent)
-            frm.pack(fill=tk.X, pady=2)
-            ttk.Label(frm, text=label).pack(anchor=tk.W)
-            ttk.Entry(frm, textvariable=self.vars[key], width=18).pack(fill=tk.X)
+            frm.pack(fill=tk.X, pady=4)
+            ttk.Label(frm, text=label, font=label_font).pack(anchor=tk.W)
+            ttk.Entry(frm, textvariable=self.vars[key], width=22, font=entry_font).pack(fill=tk.X)
 
-        ttk.Label(parent, text="Right boundary condition").pack(anchor=tk.W, pady=(6, 0))
+        ttk.Label(parent, text="Right boundary condition", font=label_font).pack(anchor=tk.W, pady=(8, 0))
         self.bc_right = tk.StringVar(value=defaults.bc_right)
         self.cmb_bc = ttk.Combobox(
             parent,
             textvariable=self.bc_right,
             values=["Dirichlet", "Neumann"],
             state="readonly",
+            font=entry_font,
         )
-        self.cmb_bc.pack(fill=tk.X, pady=2)
+        self.cmb_bc.pack(fill=tk.X, pady=4)
 
         # Temperature sweep (optional)
-        temp_frame = ttk.Labelframe(parent, text="Temperature Sweep (optional)")
-        temp_frame.pack(fill=tk.X, pady=(6, 0))
-        ttk.Label(temp_frame, text="Temperatures [K] (comma-separated):").pack(anchor=tk.W, padx=4, pady=2)
+        temp_frame = ttk.Labelframe(parent, text="Temperature Sweep (optional)", padding=8)
+        temp_frame.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(temp_frame, text="Temperatures [K] (comma-separated):", font=label_font).pack(anchor=tk.W, padx=4, pady=2)
         self.temp_list_var = tk.StringVar(value="")
-        ttk.Entry(temp_frame, textvariable=self.temp_list_var, width=18).pack(fill=tk.X, padx=4, pady=2)
-        ttk.Label(temp_frame, text="Example: 300, 350, 400, 450", foreground="gray40", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=4)
+        ttk.Entry(temp_frame, textvariable=self.temp_list_var, width=22, font=entry_font).pack(fill=tk.X, padx=4, pady=4)
+        ttk.Label(temp_frame, text="Example: 300, 350, 400, 450", foreground="gray40", font=("TkDefaultFont", 10)).pack(anchor=tk.W, padx=4)
 
-        ttk.Label(parent, text="Layers (top to bottom)").pack(anchor=tk.W, pady=(8, 0))
+        ttk.Label(parent, text="Layers (top to bottom)", font=("TkDefaultFont", 11, "bold")).pack(anchor=tk.W, pady=(10, 0))
         self.layer_table = LayerTable(parent, list(defaults.layers), on_layers_changed=self._refresh_probe_layers)
-        self.layer_table.pack(fill=tk.BOTH, expand=True, pady=4)
+        self.layer_table.pack(fill=tk.BOTH, expand=True, pady=6)
 
-        self.btn_manual = ttk.Button(parent, text="View Manual", command=self._show_manual)
-        self.btn_manual.pack(fill=tk.X, pady=(6, 0))
+        # Configure manual button style
+        manual_btn_style = ttk.Style()
+        manual_btn_style.configure('Manual.TButton', padding=8, font=("TkDefaultFont", 11))
+
+        self.btn_manual = ttk.Button(parent, text="View Manual", command=self._show_manual, style='Manual.TButton')
+        self.btn_manual.pack(fill=tk.X, pady=(8, 0))
 
         ttk.Label(
             parent,
             text=CONSTRAINTS_TEXT,
             foreground="gray25",
             justify=tk.LEFT,
-            wraplength=260,
-        ).pack(fill=tk.X, pady=(6, 0))
+            font=("TkDefaultFont", 10),
+            wraplength=300,
+        ).pack(fill=tk.X, pady=(8, 0))
 
     def _build_results_tab(self, parent: tk.Widget) -> None:
         """Build the Results tab with visualization controls organized by graph."""
 
+        label_font = ("TkDefaultFont", 11)
+        entry_font = ("TkDefaultFont", 11)
+        bold_font = ("TkDefaultFont", 11, "bold")
+        btn_font = ("TkDefaultFont", 10)
+
         # ========== Section 1: Graph 1 - Flux & Uptake vs Time ==========
-        graph1_frame = ttk.LabelFrame(parent, text="Graph 1: Flux & Uptake vs Time", padding=4)
-        graph1_frame.pack(fill=tk.X, pady=(4, 0))
+        graph1_frame = ttk.LabelFrame(parent, text="Graph 1: Flux & Uptake vs Time", padding=8)
+        graph1_frame.pack(fill=tk.X, pady=(6, 0))
 
         # Flux probe
         probe_subframe = ttk.Frame(graph1_frame)
-        probe_subframe.pack(fill=tk.X, pady=2)
-        ttk.Label(probe_subframe, text="Flux probe (optional)", font=("TkDefaultFont", 9, "bold")).pack(anchor=tk.W)
+        probe_subframe.pack(fill=tk.X, pady=4)
+        ttk.Label(probe_subframe, text="Flux probe (optional)", font=bold_font).pack(anchor=tk.W)
 
         row0 = ttk.Frame(probe_subframe)
-        row0.pack(fill=tk.X, pady=2)
-        ttk.Label(row0, text="Position [m]").pack(side=tk.LEFT, padx=2)
+        row0.pack(fill=tk.X, pady=3)
+        ttk.Label(row0, text="Position [m]", font=label_font).pack(side=tk.LEFT, padx=4)
         self.probe_var = tk.StringVar(value="")
-        ttk.Entry(row0, textvariable=self.probe_var, width=14).pack(side=tk.LEFT, padx=2)
-        ttk.Button(row0, text="Plot", command=self._on_probe_update).pack(side=tk.LEFT, padx=4)
+        ttk.Entry(row0, textvariable=self.probe_var, width=16, font=entry_font).pack(side=tk.LEFT, padx=4)
+
+        probe_btn_style = ttk.Style()
+        probe_btn_style.configure('Probe.TButton', padding=6, font=btn_font)
+        ttk.Button(row0, text="Plot", command=self._on_probe_update, style='Probe.TButton').pack(side=tk.LEFT, padx=6)
 
         row1 = ttk.Frame(probe_subframe)
-        row1.pack(fill=tk.X, pady=2)
-        ttk.Label(row1, text="Layer").pack(side=tk.LEFT, padx=2)
-        self.probe_layer = ttk.Combobox(row1, state="readonly", width=18)
-        self.probe_layer.pack(side=tk.LEFT, padx=2)
-        ttk.Button(row1, text="Plot layer center", command=self._on_probe_layer).pack(side=tk.LEFT, padx=4)
+        row1.pack(fill=tk.X, pady=3)
+        ttk.Label(row1, text="Layer", font=label_font).pack(side=tk.LEFT, padx=4)
+        self.probe_layer = ttk.Combobox(row1, state="readonly", width=20, font=entry_font)
+        self.probe_layer.pack(side=tk.LEFT, padx=4)
+        ttk.Button(row1, text="Plot layer center", command=self._on_probe_layer, style='Probe.TButton').pack(side=tk.LEFT, padx=6)
         self._refresh_probe_layers()
 
         # Flux view selector
         flux_select = ttk.Frame(graph1_frame)
-        flux_select.pack(fill=tk.X, pady=(6, 2))
-        ttk.Label(flux_select, text="Flux view").pack(side=tk.LEFT, padx=2)
+        flux_select.pack(fill=tk.X, pady=(8, 4))
+        ttk.Label(flux_select, text="Flux view", font=label_font).pack(side=tk.LEFT, padx=4)
         self.cmb_flux = ttk.Combobox(
             flux_select,
             textvariable=self.selected_flux,
@@ -858,96 +982,818 @@ class App(tk.Tk):
                 "Exit (x=L)",
                 "Probe (custom)",
             ],
-            width=18,
+            width=20,
+            font=entry_font,
         )
-        self.cmb_flux.pack(side=tk.LEFT, padx=4)
+        self.cmb_flux.pack(side=tk.LEFT, padx=6)
         self.cmb_flux.bind("<<ComboboxSelected>>", lambda _event: self._on_flux_selection())
 
         # Temperature selection for Graph 1 (only visible for temperature sweep)
         temp_select_g1 = ttk.Frame(graph1_frame)
-        temp_select_g1.pack(fill=tk.X, pady=2)
-        ttk.Label(temp_select_g1, text="Temperature").pack(side=tk.LEFT, padx=2)
+        temp_select_g1.pack(fill=tk.X, pady=4)
+        ttk.Label(temp_select_g1, text="Temperature", font=label_font).pack(side=tk.LEFT, padx=4)
         self.selected_temperature = tk.StringVar()
         self.cmb_temperature = ttk.Combobox(
             temp_select_g1,
             textvariable=self.selected_temperature,
             state="readonly",
             values=[],
-            width=12,
+            width=14,
+            font=entry_font,
         )
-        self.cmb_temperature.pack(side=tk.LEFT, padx=4)
+        self.cmb_temperature.pack(side=tk.LEFT, padx=6)
         self.cmb_temperature.bind("<<ComboboxSelected>>", lambda _event: self._on_temperature_selection())
         # Initially hide temperature selector
         temp_select_g1.pack_forget()
         self.temp_select_frame = temp_select_g1
 
         # Flux value display
-        self.flux_value_label = ttk.Label(graph1_frame, text="Flux: -, Cum: -", foreground="gray25", justify=tk.LEFT, wraplength=260)
-        self.flux_value_label.pack(fill=tk.X, pady=(4, 0))
+        self.flux_value_label = ttk.Label(graph1_frame, text="Flux: -, Cum: -", foreground="gray25", justify=tk.LEFT, font=("TkDefaultFont", 10), wraplength=300)
+        self.flux_value_label.pack(fill=tk.X, pady=(6, 0))
         self._update_flux_value_label()
 
         # ========== Section 2: Graph 2 - C vs Time ==========
-        graph2_frame = ttk.LabelFrame(parent, text="Graph 2: Concentration vs Time", padding=4)
-        graph2_frame.pack(fill=tk.X, pady=(6, 0))
+        graph2_frame = ttk.LabelFrame(parent, text="Graph 2: Concentration vs Time", padding=8)
+        graph2_frame.pack(fill=tk.X, pady=(8, 0))
 
-        ttk.Label(graph2_frame, text="Position [m]:").pack(anchor=tk.W, padx=2, pady=2)
+        ttk.Label(graph2_frame, text="Position [m]:", font=label_font).pack(anchor=tk.W, padx=4, pady=3)
         self.c_time_position_var = tk.StringVar(value="")
         pos_row_g2 = ttk.Frame(graph2_frame)
-        pos_row_g2.pack(fill=tk.X, padx=2, pady=2)
-        ttk.Entry(pos_row_g2, textvariable=self.c_time_position_var, width=14).pack(side=tk.LEFT, padx=2)
+        pos_row_g2.pack(fill=tk.X, padx=4, pady=3)
+        ttk.Entry(pos_row_g2, textvariable=self.c_time_position_var, width=16, font=entry_font).pack(side=tk.LEFT, padx=4)
 
-        ttk.Label(graph2_frame, text="Temperature(s) [K, comma-separated]:").pack(anchor=tk.W, padx=2, pady=(6, 2))
+        ttk.Label(graph2_frame, text="Temperature(s) [K, comma-separated]:", font=label_font).pack(anchor=tk.W, padx=4, pady=(8, 3))
         self.c_time_temps_var = tk.StringVar(value="")
         temp_row_g2 = ttk.Frame(graph2_frame)
-        temp_row_g2.pack(fill=tk.X, padx=2, pady=2)
-        ttk.Entry(temp_row_g2, textvariable=self.c_time_temps_var, width=14).pack(side=tk.LEFT, padx=2)
-        ttk.Button(temp_row_g2, text="Update", command=self._update_c_time_plot).pack(side=tk.LEFT, padx=4)
+        temp_row_g2.pack(fill=tk.X, padx=4, pady=3)
+        ttk.Entry(temp_row_g2, textvariable=self.c_time_temps_var, width=16, font=entry_font).pack(side=tk.LEFT, padx=4)
+        ttk.Button(temp_row_g2, text="Update", command=self._update_c_time_plot, style='Probe.TButton').pack(side=tk.LEFT, padx=6)
 
         # ========== Section 3: Graph 3 - Concentration Profile (C vs x) ==========
-        graph3_frame = ttk.LabelFrame(parent, text="Graph 3: Concentration Profile (C vs x)", padding=4)
-        graph3_frame.pack(fill=tk.X, pady=(6, 0))
+        graph3_frame = ttk.LabelFrame(parent, text="Graph 3: Concentration Profile (C vs x)", padding=8)
+        graph3_frame.pack(fill=tk.X, pady=(8, 0))
 
-        ttk.Label(graph3_frame, text="Time [s]:").pack(anchor=tk.W, padx=2, pady=2)
+        ttk.Label(graph3_frame, text="Time [s]:", font=label_font).pack(anchor=tk.W, padx=4, pady=3)
         self.profile_time_var = tk.StringVar(value="")
         time_row_g3 = ttk.Frame(graph3_frame)
-        time_row_g3.pack(fill=tk.X, padx=2, pady=2)
-        ttk.Entry(time_row_g3, textvariable=self.profile_time_var, width=14).pack(side=tk.LEFT, padx=2)
-        ttk.Button(time_row_g3, text="Go to time", command=self._go_to_time).pack(side=tk.LEFT, padx=4)
+        time_row_g3.pack(fill=tk.X, padx=4, pady=3)
+        ttk.Entry(time_row_g3, textvariable=self.profile_time_var, width=16, font=entry_font).pack(side=tk.LEFT, padx=4)
+        ttk.Button(time_row_g3, text="Go to time", command=self._go_to_time, style='Probe.TButton').pack(side=tk.LEFT, padx=6)
 
         # Temperature selection for Graph 3 (only visible for temperature sweep)
         temp_select_g3 = ttk.Frame(graph3_frame)
-        temp_select_g3.pack(fill=tk.X, pady=(6, 2))
-        ttk.Label(temp_select_g3, text="Temperature").pack(side=tk.LEFT, padx=2)
+        temp_select_g3.pack(fill=tk.X, pady=(8, 4))
+        ttk.Label(temp_select_g3, text="Temperature", font=label_font).pack(side=tk.LEFT, padx=4)
         self.selected_temperature_g3 = tk.StringVar()
         self.cmb_temperature_g3 = ttk.Combobox(
             temp_select_g3,
             textvariable=self.selected_temperature_g3,
             state="readonly",
             values=[],
-            width=12,
+            width=14,
+            font=entry_font,
         )
-        self.cmb_temperature_g3.pack(side=tk.LEFT, padx=4)
+        self.cmb_temperature_g3.pack(side=tk.LEFT, padx=6)
         self.cmb_temperature_g3.bind("<<ComboboxSelected>>", lambda _event: self._on_temperature_selection_g3())
         # Initially hide temperature selector
         temp_select_g3.pack_forget()
         self.temp_select_frame_g3 = temp_select_g3
 
         # ========== Section 4: Graph 4 - C vs Temperature ==========
-        graph4_frame = ttk.LabelFrame(parent, text="Graph 4: Concentration vs Temperature", padding=4)
-        graph4_frame.pack(fill=tk.X, pady=(6, 0))
+        graph4_frame = ttk.LabelFrame(parent, text="Graph 4: Concentration vs Temperature", padding=8)
+        graph4_frame.pack(fill=tk.X, pady=(8, 0))
 
-        ttk.Label(graph4_frame, text="Position [m]:").pack(anchor=tk.W, padx=2, pady=2)
+        ttk.Label(graph4_frame, text="Position [m]:", font=label_font).pack(anchor=tk.W, padx=4, pady=3)
         self.temp_plot_position_var = tk.StringVar(value="")
         pos_row_g4 = ttk.Frame(graph4_frame)
-        pos_row_g4.pack(fill=tk.X, padx=2, pady=2)
-        ttk.Entry(pos_row_g4, textvariable=self.temp_plot_position_var, width=14).pack(side=tk.LEFT, padx=2)
+        pos_row_g4.pack(fill=tk.X, padx=4, pady=3)
+        ttk.Entry(pos_row_g4, textvariable=self.temp_plot_position_var, width=16, font=entry_font).pack(side=tk.LEFT, padx=4)
 
-        ttk.Label(graph4_frame, text="Time(s) [s, comma-separated]:").pack(anchor=tk.W, padx=2, pady=(6, 2))
+        ttk.Label(graph4_frame, text="Time(s) [s, comma-separated]:", font=label_font).pack(anchor=tk.W, padx=4, pady=(8, 3))
         self.temp_plot_times_var = tk.StringVar(value="")
         time_row_g4 = ttk.Frame(graph4_frame)
-        time_row_g4.pack(fill=tk.X, padx=2, pady=2)
-        ttk.Entry(time_row_g4, textvariable=self.temp_plot_times_var, width=14).pack(side=tk.LEFT, padx=2)
-        ttk.Button(time_row_g4, text="Update", command=self._update_temperature_plot).pack(side=tk.LEFT, padx=4)
+        time_row_g4.pack(fill=tk.X, padx=4, pady=3)
+        ttk.Entry(time_row_g4, textvariable=self.temp_plot_times_var, width=16, font=entry_font).pack(side=tk.LEFT, padx=4)
+        ttk.Button(time_row_g4, text="Update", command=self._update_temperature_plot, style='Probe.TButton').pack(side=tk.LEFT, padx=6)
+
+    def _build_analysis_tab(self, parent: tk.Widget) -> None:
+        """Build the Analysis tab with analysis controls."""
+        from .analysis_ui import ExperimentalDataTable
+        from .models import CapacitorParams
+        from .analysis import calculate_capacitance, calculate_dq_grid, prepare_plot_data
+        from .plots import update_analysis_plot
+        from .utils import save_experimental_data, load_experimental_data
+
+        label_font = ("TkDefaultFont", 11)
+        entry_font = ("TkDefaultFont", 11)
+        bold_font = ("TkDefaultFont", 11, "bold")
+
+        # Current state variables
+        self.current_exp_data = None
+        self.saved_datasets = {}
+
+        # Data source mode
+        self.data_source_mode = tk.StringVar(value="current")  # "current" or "loaded"
+
+        # Variable selection state
+        self.fixed_var = tk.StringVar(value="position")
+        self.row_var = tk.StringVar(value="time")
+        self.col_var = tk.StringVar(value="temperature")
+
+        # Capacitor parameter variables
+        self.var_epsilon_r = tk.StringVar(value="3.9")
+        self.var_A = tk.StringVar(value="1e-4")
+        self.var_d = tk.StringVar(value="1e-9")
+        self.var_V0 = tk.StringVar(value="0.0")
+        self.var_fixed_value = tk.StringVar(value="1e-6")
+
+        # Capacitance display
+        self.var_capacitance = tk.StringVar(value="N/A")
+
+        # Dataset name
+        self.var_dataset_name = tk.StringVar(value="Dataset_1")
+
+        # Plot control variables
+        self.var_x_axis = tk.StringVar(value="temperature")
+        self.var_sim_y = tk.StringVar(value="C")
+        self.var_sim_filter_1 = tk.StringVar(value="100.0")
+        self.var_sim_filter_2 = tk.StringVar(value="1e-6")
+        self.var_exp_filter = tk.StringVar(value="100.0")
+
+        # === Capacitor Parameters ===
+        cap_frame = ttk.LabelFrame(parent, text="Capacitor Model Parameters", padding=10)
+        cap_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        row = 0
+        ttk.Label(cap_frame, text="Relative Permittivity εᵣ:", font=label_font).grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        ttk.Entry(cap_frame, textvariable=self.var_epsilon_r, width=20, font=entry_font).grid(row=row, column=1, padx=5, pady=3)
+        ttk.Label(cap_frame, text="(dimensionless)", font=label_font).grid(row=row, column=2, sticky="w", padx=5, pady=3)
+
+        row += 1
+        ttk.Label(cap_frame, text="Electrode Area A:", font=label_font).grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        ttk.Entry(cap_frame, textvariable=self.var_A, width=20, font=entry_font).grid(row=row, column=1, padx=5, pady=3)
+        ttk.Label(cap_frame, text="[m²]", font=label_font).grid(row=row, column=2, sticky="w", padx=5, pady=3)
+
+        row += 1
+        ttk.Label(cap_frame, text="Distance d:", font=label_font).grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        ttk.Entry(cap_frame, textvariable=self.var_d, width=20, font=entry_font).grid(row=row, column=1, padx=5, pady=3)
+        ttk.Label(cap_frame, text="[m]", font=label_font).grid(row=row, column=2, sticky="w", padx=5, pady=3)
+
+        row += 1
+        ttk.Label(cap_frame, text="Reference Voltage V₀:", font=label_font).grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        ttk.Entry(cap_frame, textvariable=self.var_V0, width=20, font=entry_font).grid(row=row, column=1, padx=5, pady=3)
+        ttk.Label(cap_frame, text="[V]", font=label_font).grid(row=row, column=2, sticky="w", padx=5, pady=3)
+
+        row += 1
+        ttk.Label(cap_frame, text="Capacitance C:", font=label_font).grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        ttk.Label(cap_frame, textvariable=self.var_capacitance, foreground="blue", font=bold_font).grid(row=row, column=1, sticky="w", padx=5, pady=3)
+        ttk.Label(cap_frame, text="[F]", font=label_font).grid(row=row, column=2, sticky="w", padx=5, pady=3)
+
+        # === Data Source Mode Selection ===
+        mode_frame = ttk.LabelFrame(parent, text="Data Source Mode", padding=10)
+        mode_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        ttk.Label(mode_frame, text="Select data source for plotting:", font=label_font).pack(anchor="w", padx=5, pady=3)
+
+        mode_radio_frame = ttk.Frame(mode_frame)
+        mode_radio_frame.pack(fill=tk.X, padx=20, pady=5)
+
+        ttk.Radiobutton(
+            mode_radio_frame,
+            text="Use Current Table Data (Live editing)",
+            variable=self.data_source_mode,
+            value="current",
+            command=self._on_analysis_data_source_changed
+        ).pack(side=tk.LEFT, padx=10)
+
+        ttk.Radiobutton(
+            mode_radio_frame,
+            text="Use Loaded Dataset (From file)",
+            variable=self.data_source_mode,
+            value="loaded",
+            command=self._on_analysis_data_source_changed
+        ).pack(side=tk.LEFT, padx=10)
+
+        # Status label
+        self.lbl_analysis_data_source_status = ttk.Label(mode_frame, text="Mode: Using current table data", foreground="green", font=("TkDefaultFont", 9, "italic"))
+        self.lbl_analysis_data_source_status.pack(anchor="w", padx=5, pady=3)
+
+        # === Variable Selection ===
+        var_frame = ttk.LabelFrame(parent, text="Experimental Data Setup", padding=10)
+        var_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        ttk.Label(var_frame, text="Fixed Variable:", font=bold_font).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+
+        fixed_radio_frame = ttk.Frame(var_frame)
+        fixed_radio_frame.grid(row=1, column=0, columnspan=3, sticky="w", padx=20, pady=2)
+
+        ttk.Radiobutton(fixed_radio_frame, text="Temperature [K]", variable=self.fixed_var, value="temperature").pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(fixed_radio_frame, text="Time [s]", variable=self.fixed_var, value="time").pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(fixed_radio_frame, text="Position [m]", variable=self.fixed_var, value="position").pack(side=tk.LEFT, padx=10)
+
+        ttk.Label(var_frame, text="Fixed Value:", font=label_font).grid(row=2, column=0, sticky="w", padx=5, pady=3)
+        ttk.Entry(var_frame, textvariable=self.var_fixed_value, width=20, font=entry_font).grid(row=2, column=1, padx=5, pady=3)
+        self.lbl_fixed_unit = ttk.Label(var_frame, text="[m]", font=label_font)
+        self.lbl_fixed_unit.grid(row=2, column=2, sticky="w", padx=5, pady=3)
+
+        ttk.Separator(var_frame, orient="horizontal").grid(row=3, column=0, columnspan=3, sticky="ew", pady=10)
+
+        ttk.Label(var_frame, text="Row Variable:", font=bold_font).grid(row=4, column=0, sticky="w", padx=5, pady=3)
+        self.combo_row_var = ttk.Combobox(var_frame, textvariable=self.row_var, state="readonly", width=20)
+        self.combo_row_var.grid(row=4, column=1, padx=5, pady=3)
+
+        ttk.Label(var_frame, text="Column Variable:", font=bold_font).grid(row=5, column=0, sticky="w", padx=5, pady=3)
+        self.combo_col_var = ttk.Combobox(var_frame, textvariable=self.col_var, state="readonly", width=20)
+        self.combo_col_var.grid(row=5, column=1, padx=5, pady=3)
+
+        # === Experimental Data Table ===
+        table_frame = ttk.LabelFrame(parent, text="Voltage Measurements (V)", padding=10)
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        self.exp_data_table = ExperimentalDataTable(table_frame, on_data_changed=None)
+        self.exp_data_table.pack(fill=tk.BOTH, expand=True)
+
+        # === Dataset Management ===
+        dataset_frame = ttk.LabelFrame(parent, text="Dataset Management", padding=10)
+        dataset_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        ttk.Label(dataset_frame, text="Dataset Name:", font=label_font).grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        ttk.Entry(dataset_frame, textvariable=self.var_dataset_name, width=22, font=entry_font).grid(row=0, column=1, padx=5, pady=2)
+
+        btn_frame = ttk.Frame(dataset_frame)
+        btn_frame.grid(row=1, column=0, columnspan=2, pady=10)
+
+        dataset_btn_style = ttk.Style()
+        dataset_btn_style.configure('Dataset.TButton', padding=6, font=("TkDefaultFont", 11))
+
+        self.btn_analysis_save_dataset = ttk.Button(btn_frame, text="💾 Save Dataset", command=self._save_analysis_dataset, width=16, style='Dataset.TButton')
+        self.btn_analysis_save_dataset.pack(side=tk.LEFT, padx=5)
+        self.btn_analysis_load_file = ttk.Button(btn_frame, text="📂 Load from File", command=self._load_analysis_from_file, width=16, style='Dataset.TButton')
+        self.btn_analysis_load_file.pack(side=tk.LEFT, padx=5)
+
+        # === Plot Controls ===
+        plot_ctrl_frame = ttk.LabelFrame(parent, text="Analysis Plot Controls", padding=10)
+        plot_ctrl_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        row = 0
+        ttk.Label(plot_ctrl_frame, text="X-axis Variable:", font=bold_font).grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        self.combo_x_axis = ttk.Combobox(plot_ctrl_frame, textvariable=self.var_x_axis, state="readonly", width=20, values=["temperature", "time", "position"])
+        self.combo_x_axis.grid(row=row, column=1, padx=5, pady=3)
+
+        row += 1
+        ttk.Label(plot_ctrl_frame, text="Simulation Y Variable:", font=bold_font).grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        self.combo_sim_y = ttk.Combobox(plot_ctrl_frame, textvariable=self.var_sim_y, state="readonly", width=20,
+                                        values=["C", "J_source", "J_end", "J_target", "cum_source", "cum_end", "cum_target", "mass_target"])
+        self.combo_sim_y.grid(row=row, column=1, padx=5, pady=3)
+
+        row += 1
+        ttk.Separator(plot_ctrl_frame, orient="horizontal").grid(row=row, column=0, columnspan=2, sticky="ew", pady=5)
+
+        row += 1
+        ttk.Label(plot_ctrl_frame, text="Filter Values (applied to both):", font=bold_font).grid(row=row, column=0, columnspan=2, sticky="w", padx=5, pady=3)
+
+        row += 1
+        self.lbl_filter_1 = ttk.Label(plot_ctrl_frame, text="Time [s]:", font=label_font)
+        self.lbl_filter_1.grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        ttk.Entry(plot_ctrl_frame, textvariable=self.var_sim_filter_1, width=20, font=entry_font).grid(row=row, column=1, padx=5, pady=3)
+
+        row += 1
+        self.lbl_filter_2 = ttk.Label(plot_ctrl_frame, text="Position [m]:", font=label_font)
+        self.lbl_filter_2.grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        ttk.Entry(plot_ctrl_frame, textvariable=self.var_sim_filter_2, width=20, font=entry_font).grid(row=row, column=1, padx=5, pady=3)
+
+        row += 1
+        update_plot_btn_style = ttk.Style()
+        update_plot_btn_style.configure('UpdatePlot.TButton', padding=8, font=("TkDefaultFont", 11, "bold"))
+        ttk.Button(plot_ctrl_frame, text="📊 Update Plot", command=self._update_analysis_plot, width=28, style='UpdatePlot.TButton').grid(row=row, column=0, columnspan=2, pady=10)
+
+        # Save graph buttons
+        save_frame = ttk.Frame(parent)
+        save_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        save_btn_style = ttk.Style()
+        save_btn_style.configure('SaveGraph.TButton', padding=6, font=("TkDefaultFont", 10))
+
+        ttk.Button(save_frame, text="💾 Save PNG", command=self._save_analysis_graph_png, width=14, style='SaveGraph.TButton').pack(side=tk.LEFT, padx=5)
+        ttk.Button(save_frame, text="💾 Save SVG", command=self._save_analysis_graph_svg, width=14, style='SaveGraph.TButton').pack(side=tk.LEFT, padx=5)
+
+        # Setup callbacks
+        self.var_epsilon_r.trace_add("write", lambda *args: self._update_analysis_capacitance())
+        self.var_A.trace_add("write", lambda *args: self._update_analysis_capacitance())
+        self.var_d.trace_add("write", lambda *args: self._update_analysis_capacitance())
+        self.var_V0.trace_add("write", lambda *args: self._update_analysis_capacitance())
+        self.fixed_var.trace_add("write", lambda *args: self._update_analysis_variable_selections())
+        self.row_var.trace_add("write", lambda *args: self._update_analysis_variable_selections())
+        self.var_x_axis.trace_add("write", lambda *args: self._update_analysis_filter_labels())
+
+        # Initial updates
+        self._update_analysis_capacitance()
+        self._update_analysis_variable_selections()
+        self._update_analysis_filter_labels()
+        self._on_analysis_data_source_changed()  # Set initial button states
+
+    def _update_analysis_capacitance(self, *args):
+        """Calculate and display capacitance from εᵣ, A, d parameters."""
+        try:
+            epsilon_r = float(self.var_epsilon_r.get())
+            A = float(self.var_A.get())
+            d = float(self.var_d.get())
+            V0 = float(self.var_V0.get())
+
+            from .models import CapacitorParams
+            from .analysis import calculate_capacitance
+            params = CapacitorParams(epsilon_r=epsilon_r, A=A, d=d, V0=V0)
+            capacitance = calculate_capacitance(params)
+
+            self.var_capacitance.set(f"{capacitance:.6e}")
+        except (ValueError, ZeroDivisionError):
+            self.var_capacitance.set("N/A")
+
+    def _update_analysis_variable_selections(self, *args):
+        """Update row/col variable comboboxes based on fixed variable to ensure they are distinct."""
+        fixed = self.fixed_var.get()
+        row = self.row_var.get()
+        col = self.col_var.get()
+
+        # Available variables
+        all_vars = ["position", "time", "temperature"]
+
+        # Update row variable options (exclude fixed variable)
+        row_options = [v for v in all_vars if v != fixed]
+        self.combo_row_var.config(values=row_options)
+
+        # If current row is not valid, set to first option
+        if row not in row_options:
+            row = row_options[0]
+            self.row_var.set(row)
+
+        # Update col variable options (exclude fixed variable and row variable)
+        col_options = [v for v in all_vars if v != fixed and v != row]
+        self.combo_col_var.config(values=col_options)
+
+        # If current col is not valid, set to first option
+        if col not in col_options:
+            col = col_options[0] if col_options else row_options[0]
+            self.col_var.set(col)
+
+        # Update fixed value unit label based on fixed variable
+        unit_map = {"temperature": "[K]", "time": "[s]", "position": "[m]"}
+        self.lbl_fixed_unit.config(text=unit_map.get(fixed, ""))
+
+    def _update_analysis_filter_labels(self, *args):
+        """Update filter labels based on X-axis selection."""
+        x_axis = self.var_x_axis.get()
+
+        # Update filter 1 label (unified for both sim and exp)
+        if x_axis == "position":
+            self.lbl_filter_1.config(text="Time [s]:")
+        elif x_axis == "time":
+            self.lbl_filter_1.config(text="Position [m]:")
+        else:  # temperature
+            self.lbl_filter_1.config(text="Position [m]:")
+
+        # Update filter 2 label (unified for both sim and exp)
+        if x_axis == "position":
+            self.lbl_filter_2.config(text="Temp [K]:")
+        elif x_axis == "time":
+            self.lbl_filter_2.config(text="Temp [K]:")
+        else:  # temperature
+            self.lbl_filter_2.config(text="Time [s]:")
+
+    def _save_analysis_dataset(self):
+        """Save current experimental data as a dataset."""
+        if self.current_exp_data is None:
+            messagebox.showwarning("No Data", "No experimental data loaded.", parent=self)
+            return
+
+        # Get dataset name from user
+        dataset_name = simpledialog.askstring("Save Dataset", "Enter a name for this dataset:", parent=self)
+        if not dataset_name:
+            return
+
+        # Collect all form data
+        from .models import CapacitorParams
+        try:
+            params = CapacitorParams(
+                epsilon_r=float(self.var_epsilon_r.get()),
+                A=float(self.var_A.get()),
+                d=float(self.var_d.get()),
+                V0=float(self.var_V0.get())
+            )
+
+            dataset = {
+                "params": params,
+                "exp_data": self.current_exp_data,
+                "fixed_var": self.fixed_var.get(),
+                "row_var": self.row_var.get(),
+                "col_var": self.col_var.get()
+            }
+
+            self.saved_datasets[dataset_name] = dataset
+            messagebox.showinfo("Success", f"Dataset '{dataset_name}' saved.", parent=self)
+        except ValueError as e:
+            messagebox.showerror("Invalid Parameters", str(e), parent=self)
+
+    def _load_analysis_from_file(self):
+        """Load experimental data from JSON file."""
+        from tkinter import filedialog
+        from .utils import load_experimental_data
+
+        filepath = filedialog.askopenfilename(
+            title="Load Experimental Data",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            parent=self
+        )
+
+        if not filepath:
+            return
+
+        try:
+            exp_data = load_experimental_data(filepath)
+            self.current_exp_data = exp_data
+
+            # Populate the table
+            self.exp_data_table.load_data(exp_data)
+
+            # Switch to "loaded" mode
+            self.data_source_mode.set("loaded")
+            self._on_analysis_data_source_changed()
+
+            messagebox.showinfo("Success", f"Loaded experimental data from {filepath}\nSwitched to 'Use Loaded Dataset' mode.", parent=self)
+        except Exception as e:
+            messagebox.showerror("Load Error", f"Failed to load data: {e}", parent=self)
+
+    def _on_analysis_data_source_changed(self):
+        """Handle data source mode change in Analysis tab."""
+        mode = self.data_source_mode.get()
+
+        if mode == "current":
+            # Use Current Table Data mode
+            self.lbl_analysis_data_source_status.config(
+                text="Mode: Using current table data (live editing enabled)",
+                foreground="green"
+            )
+            # Enable Save Dataset
+            self.btn_analysis_save_dataset.config(state="normal")
+
+        elif mode == "loaded":
+            # Use Loaded Dataset mode
+            if self.current_exp_data is None:
+                self.lbl_analysis_data_source_status.config(
+                    text="Mode: No dataset loaded (please load from file)",
+                    foreground="orange"
+                )
+            else:
+                self.lbl_analysis_data_source_status.config(
+                    text=f"Mode: Using loaded dataset '{self.current_exp_data.name}'",
+                    foreground="blue"
+                )
+            # Disable Save Dataset in loaded mode
+            self.btn_analysis_save_dataset.config(state="disabled")
+
+    def _update_analysis_plot(self):
+        """Update analysis plot with current data."""
+        print("[DEBUG] _update_analysis_plot called")
+
+        # Check if simulation results available
+        if not hasattr(self, 'results') or self.results is None:
+            print("[DEBUG] No simulation results available")
+            messagebox.showwarning(
+                "No Simulation Results",
+                "Please run a simulation first in the Simulation tab.\n\n"
+                "The Analysis tab requires simulation data to compare with experimental measurements.",
+                parent=self
+            )
+            return
+
+        print(f"[DEBUG] Simulation results available: {list(self.results.keys())}")
+
+        # Get experimental data based on current mode
+        mode = self.data_source_mode.get()
+        print(f"[DEBUG] Data source mode: {mode}")
+        exp_data_to_plot = None
+
+        if mode == "current":
+            # Use current table data
+            try:
+                # Get capacitor params
+                from .models import CapacitorParams
+                params = CapacitorParams(
+                    epsilon_r=float(self.var_epsilon_r.get()),
+                    A=float(self.var_A.get()),
+                    d=float(self.var_d.get()),
+                    V0=float(self.var_V0.get())
+                )
+                print(f"[DEBUG] Capacitor params: {params}")
+
+                # Set capacitor params to table (IMPORTANT: Required before get_experimental_data)
+                self.exp_data_table.update_capacitor_params(params)
+                print("[DEBUG] Capacitor params set to table")
+
+                # Get variable configuration
+                fixed_var = self.fixed_var.get()
+                fixed_value = float(self.var_fixed_value.get())
+                row_var = self.row_var.get()
+                col_var = self.col_var.get()
+                print(f"[DEBUG] Variables: fixed={fixed_var}({fixed_value}), row={row_var}, col={col_var}")
+
+                # Validate variable selection
+                if fixed_var == row_var or fixed_var == col_var or row_var == col_var:
+                    messagebox.showerror("Error", "Fixed, row, and column variables must be distinct", parent=self)
+                    return
+
+                # Get experimental data from table
+                exp_data_to_plot = self.exp_data_table.get_experimental_data(
+                    name="Current Table Data",
+                    fixed_var=fixed_var,
+                    fixed_value=fixed_value,
+                    row_var=row_var,
+                    col_var=col_var
+                )
+                print(f"[DEBUG] Experimental data retrieved: {exp_data_to_plot.name}")
+
+            except (ValueError, AttributeError) as e:
+                print(f"[DEBUG] Error getting experimental data: {type(e).__name__}: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                messagebox.showerror("Error", f"Failed to get experimental data:\n{str(e)}", parent=self)
+                return
+
+        elif mode == "loaded":
+            # Use loaded dataset
+            print("[DEBUG] Using loaded dataset mode")
+            if self.current_exp_data is None:
+                print("[DEBUG] No dataset loaded")
+                messagebox.showwarning("Warning", "No dataset loaded. Please load a dataset from file.", parent=self)
+                return
+            exp_data_to_plot = self.current_exp_data
+            print(f"[DEBUG] Using loaded dataset: {exp_data_to_plot.name}")
+
+        if exp_data_to_plot is None:
+            print("[DEBUG] exp_data_to_plot is None")
+            messagebox.showwarning("Warning", "No experimental data available", parent=self)
+            return
+
+        try:
+            from .models import CapacitorParams
+            from .analysis import prepare_plot_data
+            from .plots import update_analysis_plot
+
+            # Get capacitor parameters
+            params = CapacitorParams(
+                epsilon_r=float(self.var_epsilon_r.get()),
+                A=float(self.var_A.get()),
+                d=float(self.var_d.get()),
+                V0=float(self.var_V0.get())
+            )
+            print(f"[DEBUG] Capacitor params for plotting: {params}")
+
+            # Get plot settings
+            x_axis = self.var_x_axis.get()
+            y_var = self.var_sim_y.get()
+            print(f"[DEBUG] Plot settings: x_axis={x_axis}, y_var={y_var}")
+
+            # Get filter values (optional)
+            filter1_text = self.var_sim_filter_1.get().strip()
+            filter2_text = self.var_sim_filter_2.get().strip()
+            filter1 = float(filter1_text) if filter1_text else None
+            filter2 = float(filter2_text) if filter2_text else None
+            print(f"[DEBUG] Filters: filter1={filter1}, filter2={filter2}")
+
+            # Prepare plot data
+            print("[DEBUG] Calling prepare_plot_data...")
+
+            # Check if required data exists in results
+            print(f"[DEBUG] self.results keys: {list(self.results.keys())}")
+            print(f"[DEBUG] self.results has 't' key: {'t' in self.results}")
+            print(f"[DEBUG] y_var requested: {y_var}")
+
+            if 't' not in self.results:
+                print("[DEBUG] Error: 't' key not found in results")
+                messagebox.showerror(
+                    "Invalid Simulation Data",
+                    "Simulation results are missing time data.\n\n"
+                    "Please run a new simulation in the Simulation tab.",
+                    parent=self
+                )
+                return
+
+            # Check if y_var data is available
+            if hasattr(self, 'is_temperature_sweep') and self.is_temperature_sweep:
+                # Temperature sweep case
+                required_keys = {
+                    "C": "C_Txt",
+                    "J_source": "J_surface_Tt",
+                    "J_end": "J_end_Tt",
+                    "J_target": "J_target_Tt",
+                    "cum_source": "results_by_temp",
+                    "cum_end": "results_by_temp",
+                    "cum_target": "results_by_temp",
+                    "mass_target": "results_by_temp",
+                }
+                if y_var in required_keys:
+                    key = required_keys[y_var]
+                    if key not in self.results:
+                        print(f"[DEBUG] Error: Required key '{key}' for y_var '{y_var}' not found in temperature sweep results")
+                        messagebox.showerror(
+                            "Invalid Simulation Data",
+                            f"Simulation results are missing data for '{y_var}'.\n\n"
+                            f"Required key '{key}' not found.\n\n"
+                            "Please run a new simulation in the Simulation tab.",
+                            parent=self
+                        )
+                        return
+            else:
+                # Single temperature case
+                required_keys = {
+                    "C": "C_xt",
+                    "J_source": "J_source",
+                    "J_end": "J_end",
+                    "J_target": "J_target",
+                    "cum_source": "cum_source",
+                    "cum_end": "cum_end",
+                    "cum_target": "cum_target",
+                    "mass_target": "mass_target",
+                }
+                if y_var in required_keys:
+                    key = required_keys[y_var]
+                    if key not in self.results:
+                        print(f"[DEBUG] Error: Required key '{key}' for y_var '{y_var}' not found in single temp results")
+                        messagebox.showerror(
+                            "Invalid Simulation Data",
+                            f"Simulation results are missing data for '{y_var}'.\n\n"
+                            f"Required key '{key}' not found.\n\n"
+                            "Please run a new simulation in the Simulation tab.",
+                            parent=self
+                        )
+                        return
+
+            # Build unified filter dictionaries for prepare_plot_data
+            # Both simulation and experimental data will use the same filter values
+            # IMPORTANT: Filter order must match the label order in _update_analysis_filter_labels()
+
+            # Determine which variables need filtering (not X-axis)
+            # The order MUST match the UI label order for filter_1 and filter_2
+            if x_axis == "position":
+                # filter_1 = Time, filter_2 = Temp
+                filter_var_1 = "time"
+                filter_var_2 = "temperature"
+            elif x_axis == "time":
+                # filter_1 = Position, filter_2 = Temp
+                filter_var_1 = "position"
+                filter_var_2 = "temperature"
+            else:  # x_axis == "temperature"
+                # filter_1 = Position, filter_2 = Time
+                filter_var_1 = "position"
+                filter_var_2 = "time"
+
+            # Create unified filters with user-provided values
+            sim_filters = {}
+            sim_filters[filter_var_1] = filter1 if filter1 is not None else (1e-6 if filter_var_1 == "position" else 100.0)
+            sim_filters[filter_var_2] = filter2 if filter2 is not None else (1e-6 if filter_var_2 == "position" else 100.0)
+
+            # Experimental filter uses the exact same values (unified approach)
+            # Only include the filter variable that is not the x_axis and not the exp fixed_var
+            all_vars = ["temperature", "time", "position"]
+            exp_filter_var = [v for v in all_vars if v != x_axis and v != exp_data_to_plot.fixed_var]
+            exp_filter = {}
+            if exp_filter_var:
+                # Use the same filter value from sim_filters
+                var = exp_filter_var[0]
+                exp_filter[var] = sim_filters.get(var, 100.0 if var == "temperature" else 1e-6)
+
+            print(f"[DEBUG] sim_filters: {sim_filters}")
+            print(f"[DEBUG] exp_filter: {exp_filter}")
+            print(f"[DEBUG] x_axis: {x_axis}, y_var: {y_var}")
+            print(f"[DEBUG] hasattr(self, 'is_temperature_sweep'): {hasattr(self, 'is_temperature_sweep')}")
+            if hasattr(self, 'is_temperature_sweep'):
+                print(f"[DEBUG] is_temperature_sweep: {self.is_temperature_sweep}")
+            else:
+                print("[DEBUG] is_temperature_sweep attribute not set, will use False")
+
+            x_values, sim_y_values, exp_y_values = prepare_plot_data(
+                sim_results=self.results,
+                exp_data=exp_data_to_plot,
+                x_axis_var=x_axis,
+                sim_y_var=y_var,
+                sim_filters=sim_filters,
+                exp_filter=exp_filter,
+                is_temperature_sweep=self.is_temperature_sweep if hasattr(self, 'is_temperature_sweep') else False
+            )
+            print(f"[DEBUG] Plot data prepared successfully")
+            print(f"[DEBUG] x_values shape: {x_values.shape}, min={x_values.min():.3e}, max={x_values.max():.3e}")
+            print(f"[DEBUG] sim_y_values shape: {sim_y_values.shape}, min={sim_y_values.min():.3e}, max={sim_y_values.max():.3e}, has_nan={np.any(np.isnan(sim_y_values))}")
+            print(f"[DEBUG] exp_y_values shape: {exp_y_values.shape}, min={exp_y_values.min():.3e}, max={exp_y_values.max():.3e}, has_nan={np.any(np.isnan(exp_y_values))}")
+            print(f"[DEBUG] sim_y_values: {sim_y_values}")
+            print(f"[DEBUG] exp_y_values: {exp_y_values}")
+
+            # Update the plot
+            print("[DEBUG] Calling update_analysis_plot...")
+
+            # Build labels
+            unit_map = {"temperature": "Temperature [K]", "time": "Time [s]", "position": "Position [m]"}
+            x_label = unit_map.get(x_axis, x_axis)
+
+            sim_y_labels = {
+                "C": "Concentration [mol/m³]",
+                "J_source": "Flux at x=0 [mol/(m²·s)]",
+                "J_end": "Flux at x=L [mol/(m²·s)]",
+                "J_target": "Flux at interface [mol/(m²·s)]",
+                "cum_source": "Cumulative at x=0 [mol/m²]",
+                "cum_end": "Cumulative at x=L [mol/m²]",
+                "cum_target": "Cumulative at interface [mol/m²]",
+                "mass_target": "Mass in target [mol/m²]",
+            }
+            sim_y_label = sim_y_labels.get(y_var, y_var)
+
+            # Build filter info string in consistent order (matches filter display order)
+            var_name = {"temperature": "T", "time": "t", "position": "x"}
+            var_unit = {"temperature": "K", "time": "s", "position": "m"}
+            filter_info_parts = []
+            # Add filter_var_1 first (matches UI order)
+            if filter_var_1 in sim_filters:
+                filter_info_parts.append(f"{var_name.get(filter_var_1, filter_var_1)}={sim_filters[filter_var_1]:.3e} {var_unit.get(filter_var_1, '')}")
+            # Add filter_var_2 second
+            if filter_var_2 in sim_filters:
+                filter_info_parts.append(f"{var_name.get(filter_var_2, filter_var_2)}={sim_filters[filter_var_2]:.3e} {var_unit.get(filter_var_2, '')}")
+            filter_info = ", ".join(filter_info_parts)
+
+            update_analysis_plot(
+                artists=self.analysis_artists,
+                x_values=x_values,
+                sim_y_values=sim_y_values,
+                exp_y_values=exp_y_values,
+                x_label=x_label,
+                sim_y_label=sim_y_label,
+                x_var_name=x_axis.capitalize(),
+                filter_info=filter_info
+            )
+            print("[DEBUG] Plot updated successfully")
+
+            print("[DEBUG] Drawing canvas...")
+            self.analysis_canvas.draw_idle()
+            print("[DEBUG] Canvas drawn. Plot update complete!")
+
+        except ValueError as e:
+            print(f"[DEBUG] ValueError: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror(
+                "Data Processing Error",
+                f"Failed to process plot data:\n\n{str(e)}\n\n"
+                "Please check:\n"
+                "- Capacitor parameters are valid\n"
+                "- Experimental data table has values\n"
+                "- Filter values match available data\n"
+                "- Simulation has been run with temperature sweep",
+                parent=self
+            )
+        except Exception as e:
+            print(f"[DEBUG] Unexpected error: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror(
+                "Unexpected Error",
+                f"An unexpected error occurred:\n\n{type(e).__name__}: {str(e)}\n\n"
+                "Please check the console output for detailed error information.",
+                parent=self
+            )
+
+    def _save_analysis_graph_png(self):
+        """Save current analysis graph as PNG file."""
+        from tkinter import filedialog
+
+        filepath = filedialog.asksaveasfilename(
+            title="Save Analysis Graph as PNG",
+            defaultextension=".png",
+            filetypes=[("PNG files", "*.png"), ("All files", "*.*")],
+            parent=self
+        )
+
+        if filepath:
+            try:
+                self.analysis_fig.savefig(filepath, dpi=300, bbox_inches='tight')
+                messagebox.showinfo("Success", f"Graph saved to {filepath}", parent=self)
+            except Exception as e:
+                messagebox.showerror("Save Error", f"Failed to save graph: {e}", parent=self)
+
+    def _save_analysis_graph_svg(self):
+        """Save current analysis graph as SVG file."""
+        from tkinter import filedialog
+
+        filepath = filedialog.asksaveasfilename(
+            title="Save Analysis Graph as SVG",
+            defaultextension=".svg",
+            filetypes=[("SVG files", "*.svg"), ("All files", "*.*")],
+            parent=self
+        )
+
+        if filepath:
+            try:
+                self.analysis_fig.savefig(filepath, format='svg', bbox_inches='tight')
+                messagebox.showinfo("Success", f"Graph saved to {filepath}", parent=self)
+            except Exception as e:
+                messagebox.showerror("Save Error", f"Failed to save graph: {e}", parent=self)
 
     def _gather_params(self) -> Optional[SimParams]:
         try:

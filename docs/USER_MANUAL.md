@@ -16,12 +16,12 @@ with a Crank–Nicolson scheme and visualises the results through an interactive
 
 ### 2.1 Environment
 - Python 3.10+
-- Required packages: `numpy`, `matplotlib`, `tkinter` (built in)
+- Required packages: `numpy`, `matplotlib`, `scipy`, `tkinter` (built in)
 
 Install dependencies (preferably inside a virtual environment):
 
 ```bash
-python -m pip install numpy matplotlib
+python -m pip install numpy matplotlib scipy
 ```
 
 ### 2.2 Launching the GUI
@@ -161,13 +161,188 @@ Outputs are overwritten for each run; copy the directory to archive previous res
 
 ---
 
-## 9. PyInstaller Packaging (Windows)
+## 9. Analysis Tab – Doping Analysis (Phase 12)
 
-### 9.1 Preparation
+### 9.1 Overview
+
+The **Analysis** tab enables correlation between simulation results and experimental doping measurements obtained via voltage-based capacitor measurements. This feature is useful for validating simulation predictions against real-world data in semiconductor doping, ion implantation, or electrochemical systems.
+
+**Key Capabilities**:
+- Parallel plate capacitor model for converting voltage measurements to charge changes (dq)
+- Excel-style 2D table for entering voltage measurements across two variable dimensions
+- 3D interpolation of simulation data (temperature × time × position)
+- Dual Y-axis plotting: simulation variable (left, blue) vs experimental dq (right, red)
+- Independent filter controls for simulation and experimental data
+- Save/load experimental datasets (JSON format)
+- Export graphs (PNG, SVG)
+- Multiple dataset management for comparison
+
+### 9.2 Capacitor Model
+
+The parallel plate capacitor model converts voltage measurements (V) to charge changes (dq):
+
+\[
+C = \frac{\varepsilon_0 \cdot \varepsilon_r \cdot A}{d}
+\]
+
+\[
+\Delta q = C \cdot (V - V_0)
+\]
+
+where:
+- **ε₀** = 8.854187817×10⁻¹² F/m (vacuum permittivity)
+- **ε_r** = relative permittivity of dielectric material (dimensionless)
+- **A** = capacitor plate area (m²)
+- **d** = dielectric thickness (m)
+- **V₀** = reference voltage (V)
+
+### 9.3 Workflow
+
+#### Step 1: Configure Capacitor Parameters
+1. Navigate to the **Analysis** tab
+2. Enter capacitor parameters:
+   - **ε_r**: Relative permittivity (e.g., 3.9 for SiO₂, 11.7 for Si)
+   - **Area (m²)**: Plate area (e.g., 1e-4 for 1 cm²)
+   - **Thickness (m)**: Dielectric thickness (e.g., 1e-9 for 1 nm)
+   - **V₀ (V)**: Reference voltage (e.g., 0.0 or 1.0 V)
+
+#### Step 2: Select Variables
+The system operates in a 3D parameter space: **temperature**, **time**, and **position**.
+
+1. **Fixed Variable**: Select one variable to hold constant (e.g., position = 1e-6 m)
+2. **Row Variable**: Select the variable for table rows (e.g., time)
+3. **Column Variable**: Select the variable for table columns (e.g., temperature)
+
+The experimental data table will display:
+- **Rows**: Values of the row variable
+- **Columns**: Values of the column variable
+- **Cells**: Voltage measurements (V)
+
+#### Step 3: Enter Experimental Data
+
+**Manual Entry**:
+1. Click **Add Row** / **Add Column** to build the table structure
+2. Enter row/column header values (e.g., times: 100, 200, 300 s)
+3. Double-click cells to enter voltage measurements
+4. Click **Calculate dq** to compute charge changes from voltages
+
+**CSV Import**:
+1. Click **Import CSV** in the experimental data section
+2. Select a CSV file with format:
+   ```
+   Row\Col,300,350,400
+   100,1.2,1.5,1.8
+   200,2.1,2.6,3.0
+   300,2.8,3.4,3.9
+   ```
+3. The table will populate automatically and calculate dq values
+
+#### Step 4: Configure Plot Settings
+
+**X-Axis Variable**:
+- Select which variable to plot on the X-axis (must be either row or column variable)
+
+**Simulation Y Variable**:
+- Choose the simulation quantity for the left Y-axis:
+  - **C**: Concentration (mol/m³)
+  - **J_source**: Flux at x=0 (mol/(m²·s))
+  - **J_end**: Flux at x=L (mol/(m²·s))
+  - **J_target**: Flux at interface (mol/(m²·s))
+  - **cum_source**: Cumulative uptake at x=0 (mol/m²)
+  - **cum_end**: Cumulative uptake at x=L (mol/m²)
+  - **cum_target**: Cumulative at interface (mol/m²)
+  - **mass_target**: Mass in target layer (mol/m²)
+
+**Filters**:
+- **Simulation Filters**: Set values for non-X-axis variables in the simulation
+  - Example: If X-axis = temperature, set time and position filters
+- **Experimental Filter**: Set the value for the non-X-axis variable in experimental data
+  - Example: If X-axis = temperature (col), set time filter to select which row
+
+#### Step 5: Update Plot
+1. Click **Update Plot** to generate the dual Y-axis comparison
+2. The plot shows:
+   - **Blue line (left Y-axis)**: Interpolated simulation data
+   - **Red line (right Y-axis)**: Experimental dq values
+   - **Combined legend**: Both datasets with units
+
+#### Step 6: Save/Load/Export
+
+**Save Dataset**:
+1. Enter a dataset name in the text field
+2. Click **Save Dataset** to write a JSON file (`<name>.json`)
+
+**Load Dataset**:
+1. Click **Load Dataset** and select a JSON file
+2. The table, capacitor parameters, and variable settings will be restored
+
+**Switch Dataset**:
+- Use the dropdown menu to switch between loaded datasets without re-loading files
+
+**Export Graph**:
+- Click **Export PNG** or **Export SVG** to save the current plot
+
+### 9.4 Interpretation
+
+**Goal**: Assess how well simulation predictions match experimental measurements.
+
+**Best Practices**:
+1. **Run simulation first**: Complete a temperature sweep or single simulation in the Simulation tab
+2. **Match conditions**: Ensure experimental conditions (temperature range, time points, positions) overlap with simulation grid
+3. **Iterative refinement**:
+   - If curves diverge, adjust simulation parameters (D₀, Ea, k, layer thicknesses)
+   - Re-run simulation and update analysis plot
+4. **Multiple datasets**: Compare different experimental conditions by loading multiple datasets
+
+**Example Use Case**:
+- **Scenario**: Hydrogen diffusion through a Pd barrier at different temperatures
+- **Experimental data**: Voltage measurements from a capacitor at x=1 μm for times [100, 200, 300 s] and temperatures [300, 350, 400 K]
+- **Simulation**: Temperature sweep with matching conditions
+- **Analysis**: Plot concentration vs temperature at time=200 s, position=1 μm
+- **Result**: Blue curve (simulation C) should correlate with red curve (experimental dq) shape
+
+### 9.5 File Format
+
+**Experimental Data JSON Structure**:
+```json
+{
+  "name": "Dataset Name",
+  "capacitor": {
+    "epsilon_r": 3.9,
+    "A": 1e-4,
+    "d": 1e-9,
+    "V0": 1.0
+  },
+  "fixed_var": "position",
+  "fixed_value": 1e-6,
+  "row_var": "time",
+  "row_values": [100, 200, 300],
+  "col_var": "temperature",
+  "col_values": [300, 350, 400],
+  "voltage_grid": [[1.2, 1.5, 1.8], ...],
+  "dq_grid": [[calculated values], ...]
+}
+```
+
+### 9.6 Troubleshooting
+
+| Symptom | Likely Cause | Suggested Action |
+|---------|--------------|------------------|
+| "No simulation results" error | Simulation not run yet | Run a simulation in the Simulation tab first |
+| Interpolation warnings | Experimental points outside simulation grid | Ensure experimental conditions overlap with simulation range |
+| Mismatched curve shapes | Incorrect simulation parameters or experimental setup | Verify capacitor parameters, check variable selection, review filter values |
+| Empty plot | Filter values don't match any data | Check that filter values exist in row/col values |
+| JSON load fails | Incompatible file format | Verify JSON structure matches expected format |
+
+---
+
+## 10. PyInstaller Packaging (Windows)
+
+### 10.1 Preparation
 - Ensure Python 3.10+ is installed alongside required packages.
 - Working inside a virtual environment is recommended.
 
-### 9.2 Build
+### 10.2 Build
 
 ```bash
 python -m pip install pyinstaller
@@ -177,7 +352,7 @@ pyinstaller --onefile --noconsole --name DiffReactGUI run_diffreact_gui.py
 - Output: `dist/DiffReactGUI.exe`
 - The executable launches the GUI directly. For CLI mode, continue using Python with `--cli`.
 
-### 9.3 Suggested Distribution Layout
+### 10.3 Suggested Distribution Layout
 
 ```
 DistReactGUI/
@@ -194,7 +369,7 @@ Include basic usage instructions and any additional runtime requirements in `REA
 
 ---
 
-## 10. Extensibility Notes
+## 11. Extensibility Notes
 
 The project is structured for modular growth:
 

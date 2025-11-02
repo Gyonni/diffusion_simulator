@@ -388,3 +388,108 @@ def save_temperature_sweep_excel(
     full_path = os.path.join(base_path, filename)
     wb.save(full_path)
     return full_path
+
+
+def save_experimental_data(exp_data, filename: str, base_path: str = ".") -> str:
+    """
+    Save ExperimentalData to JSON file.
+
+    Args:
+        exp_data: ExperimentalData object from models.py
+        filename: Output filename (should end with .json)
+        base_path: Directory to save file (default: current directory)
+
+    Returns:
+        Full path to saved file
+
+    Note:
+        NumPy arrays are converted to lists for JSON serialization.
+    """
+    import json
+    from pathlib import Path
+
+    # Convert to serializable dictionary
+    data_dict = {
+        "name": exp_data.name,
+        "capacitor": {
+            "epsilon_r": exp_data.capacitor.epsilon_r,
+            "A": exp_data.capacitor.A,
+            "d": exp_data.capacitor.d,
+            "V0": exp_data.capacitor.V0,
+        },
+        "fixed_var": exp_data.fixed_var,
+        "fixed_value": exp_data.fixed_value,
+        "row_var": exp_data.row_var,
+        "row_values": exp_data.row_values.tolist(),
+        "col_var": exp_data.col_var,
+        "col_values": exp_data.col_values.tolist(),
+        "voltage_grid": exp_data.voltage_grid.tolist(),
+        "dq_grid": exp_data.dq_grid.tolist(),
+    }
+
+    # Ensure .json extension
+    if not filename.endswith(".json"):
+        filename += ".json"
+
+    # Save to file
+    full_path = Path(base_path) / filename
+    with open(full_path, 'w', encoding='utf-8') as f:
+        json.dump(data_dict, f, indent=2)
+
+    return str(full_path)
+
+
+def load_experimental_data(filename: str, base_path: str = "."):
+    """
+    Load ExperimentalData from JSON file.
+
+    Args:
+        filename: Input filename
+        base_path: Directory containing file (default: current directory)
+
+    Returns:
+        ExperimentalData object
+
+    Raises:
+        FileNotFoundError: If file doesn't exist
+        ValueError: If file format is invalid
+    """
+    import json
+    from pathlib import Path
+    from .models import CapacitorParams, ExperimentalData
+
+    full_path = Path(base_path) / filename
+
+    if not full_path.exists():
+        raise FileNotFoundError(f"File not found: {full_path}")
+
+    try:
+        with open(full_path, 'r', encoding='utf-8') as f:
+            data_dict = json.load(f)
+
+        # Reconstruct CapacitorParams
+        cap_params = CapacitorParams(
+            epsilon_r=data_dict["capacitor"]["epsilon_r"],
+            A=data_dict["capacitor"]["A"],
+            d=data_dict["capacitor"]["d"],
+            V0=data_dict["capacitor"]["V0"],
+        )
+
+        # Reconstruct ExperimentalData
+        exp_data = ExperimentalData(
+            name=data_dict["name"],
+            capacitor=cap_params,
+            fixed_var=data_dict["fixed_var"],
+            fixed_value=data_dict["fixed_value"],
+            row_var=data_dict["row_var"],
+            row_values=np.array(data_dict["row_values"]),
+            col_var=data_dict["col_var"],
+            col_values=np.array(data_dict["col_values"]),
+            voltage_grid=np.array(data_dict["voltage_grid"]),
+            dq_grid=np.array(data_dict["dq_grid"]),
+        )
+
+        return exp_data
+
+    except (KeyError, TypeError, ValueError) as e:
+        raise ValueError(f"Invalid file format: {e}") from e

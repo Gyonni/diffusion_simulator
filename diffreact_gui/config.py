@@ -35,16 +35,20 @@ class Defaults:
         LayerParam(
             name="Barrier",
             thickness=2.0e-7,
-            diffusivity=5.0e-15,
+            diffusivity=5.0e-15,  # Will be ignored when D0/Ea are set
             reaction_rate=0.0,
-            nodes=81,
+            nodes=11,
+            D0=1.0e-6,
+            Ea=1.0,
         ),
         LayerParam(
             name="Target",
             thickness=3.0e-7,
-            diffusivity=1.0e-14,
-            reaction_rate=1.0e3,
-            nodes=121,
+            diffusivity=1.0e-14,  # Will be ignored when D0/Ea are set
+            reaction_rate=0.0,
+            nodes=21,
+            D0=1.0e-7,
+            Ea=1.0,
         ),
     )
 

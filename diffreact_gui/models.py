@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import List, Optional
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -52,3 +53,59 @@ class SimParams:
     bc_right: str  # 'Neumann' or 'Dirichlet'
     probe_position: Optional[float] = None
     temperatures: Optional[List[float]] = None  # Kelvin (for temperature sweep)
+
+
+@dataclass(frozen=True)
+class CapacitorParams:
+    """Parallel plate capacitor model parameters for doping analysis.
+
+    Attributes:
+        epsilon_r: Relative permittivity (dimensionless)
+        A: Electrode area [m^2]
+        d: Distance between plates [m]
+        V0: Reference voltage [V]
+
+    Note:
+        Capacitance C = (epsilon_0 * epsilon_r * A) / d
+        where epsilon_0 = 8.854187817e-12 F/m
+        Charge change: dq = C * (V - V0)
+    """
+
+    epsilon_r: float
+    A: float  # m^2
+    d: float  # m
+    V0: float  # V
+
+
+@dataclass
+class ExperimentalData:
+    """Experimental data for doping analysis.
+
+    Attributes:
+        name: Dataset identifier
+        capacitor: Capacitor model parameters
+        fixed_var: Fixed variable name ('temperature', 'time', or 'position')
+        fixed_value: Value of the fixed variable
+        row_var: Row variable name ('temperature', 'time', or 'position')
+        row_values: Array of row variable values
+        col_var: Column variable name ('temperature', 'time', or 'position')
+        col_values: Array of column variable values
+        voltage_grid: 2D array of voltage measurements [row, col] in V
+        dq_grid: 2D array of calculated charge changes [row, col] in C (auto-calculated)
+
+    Note:
+        The three variables (fixed_var, row_var, col_var) must be distinct and
+        cover all three dimensions: temperature, time, position.
+        Row and column variables form the 2D grid for voltage measurements.
+    """
+
+    name: str
+    capacitor: CapacitorParams
+    fixed_var: str  # "temperature", "time", "position"
+    fixed_value: float
+    row_var: str  # "temperature", "time", "position"
+    row_values: np.ndarray  # 1D array
+    col_var: str  # "temperature", "time", "position"
+    col_values: np.ndarray  # 1D array
+    voltage_grid: np.ndarray  # 2D array [row, col] in V
+    dq_grid: np.ndarray  # 2D array [row, col] in C (calculated)

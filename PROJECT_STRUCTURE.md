@@ -10,16 +10,19 @@ diffusion_simulator/
 │   ├── __init__.py             # 패키지 초기화
 │   ├── __main__.py             # 모듈 실행 진입점
 │   ├── config.py               # 기본 설정 및 상수
-│   ├── models.py               # 데이터 모델 (LayerParam, SimParams)
+│   ├── models.py               # 데이터 모델 (LayerParam, SimParams, CapacitorParams, ExperimentalData)
 │   ├── solver.py               # Crank-Nicolson 수치 해석기
 │   ├── physics.py              # 물리 함수 및 분석 해
-│   ├── plots.py                # Matplotlib 플롯 헬퍼
+│   ├── analysis.py             # 도핑 분석 계산 및 데이터 보간 (Phase 12)
+│   ├── plots.py                # Matplotlib 플롯 헬퍼 (분석 플롯 포함)
 │   ├── gui_elements.py         # Tkinter GUI 컴포넌트
-│   ├── utils.py                # 유틸리티 함수
+│   ├── analysis_ui.py          # 도핑 분석 탭 UI (Phase 12)
+│   ├── utils.py                # 유틸리티 함수 (실험 데이터 저장/로드 포함)
 │   └── main.py                 # 메인 실행 로직
 │
 ├── tests/                      # 테스트 코드
-│   └── test_solver.py          # 수치 해석기 테스트
+│   ├── test_solver.py          # 수치 해석기 테스트
+│   └── test_analysis.py        # 도핑 분석 모듈 테스트 (Phase 12)
 │
 ├── docs/                       # 문서
 │   ├── USER_MANUAL.md          # 사용자 매뉴얼 (영문)
@@ -101,6 +104,7 @@ diffusion_simulator/
   - 플롯 업데이트
   - 파일 내보내기
   - 매뉴얼 표시
+  - 분석 탭 통합 (Phase 12)
 
 #### diffreact_gui/plots.py
 - **역할**: 시각화
@@ -109,17 +113,56 @@ diffusion_simulator/
   - 플럭스/흡수량 플롯
   - 농도 프로필 플롯
   - 온도별 농도 플롯 (3번째 그래프)
+  - 도핑 분석 듀얼 Y축 플롯 (Phase 12)
 - **주요 함수**:
   - `create_figures()`: 3개 subplot 그래프 초기화
   - `update_flux_axes()`: 플럭스 데이터 업데이트
   - `update_profile_axes()`: 프로필 업데이트
   - `update_temperature_axes()`: 온도 vs 농도 플롯
+  - `create_analysis_figure()`: 분석 탭용 듀얼 Y축 그래프 초기화 (Phase 12)
+  - `update_analysis_plot()`: 시뮬레이션(청색, 좌) vs 실험 dq(적색, 우) 플롯 (Phase 12)
 
 #### diffreact_gui/models.py
 - **역할**: 데이터 모델 정의
 - **주요 클래스**:
   - `LayerParam`: 단일 층 파라미터 (D0, Ea 포함)
   - `SimParams`: 전체 시뮬레이션 파라미터 (temperatures 리스트 포함)
+  - `CapacitorParams`: 평행판 커패시터 모델 파라미터 (Phase 12)
+  - `ExperimentalData`: 실험 데이터 저장 모델 (Phase 12)
+
+#### diffreact_gui/analysis.py
+- **역할**: 도핑 분석 계산 엔진 (Phase 12)
+- **주요 기능**:
+  - 평행판 커패시터 모델: C = (ε₀ × ε_r × A) / d
+  - 전하 변화 계산: dq = C × (V - V₀)
+  - 3D 시뮬레이션 데이터 선형 보간 (scipy.interpolate.RegularGridInterpolator)
+  - 플롯 데이터 준비 (시뮬레이션 vs 실험 데이터 매칭)
+- **주요 함수**:
+  - `calculate_capacitance()`: 커패시터 용량 계산
+  - `calculate_dq()`, `calculate_dq_grid()`: 전하 변화 계산
+  - `interpolate_simulation_data()`: 3D 보간 (온도×시간×위치)
+  - `prepare_plot_data()`: 듀얼 Y축 플롯용 데이터 준비
+- **상수**:
+  - `EPSILON_0 = 8.854187817e-12 F/m`: 진공 유전율
+
+#### diffreact_gui/analysis_ui.py
+- **역할**: 분석 탭 UI 컴포넌트 (Phase 12)
+- **주요 클래스**:
+  - `ExperimentalDataTable`: Excel 스타일 2D 전압 측정 테이블 (Treeview 기반)
+    - 셀 편집 (더블클릭)
+    - 행/열 추가/삭제
+    - CSV 가져오기/내보내기
+    - 자동 dq 계산
+  - `AnalysisTab`: 메인 분석 탭
+    - 커패시터 파라미터 입력
+    - 변수 선택 (fixed/row/col from temperature/time/position)
+    - 듀얼 Y축 플롯 (시뮬레이션 vs 실험 dq)
+    - 필터 컨트롤 (독립적 시뮬레이션/실험 필터)
+    - 데이터셋 관리 (저장/로드/전환)
+    - PNG/SVG 그래프 내보내기
+- **UI 레이아웃**:
+  - 좌측 패널 (550px): 스크롤 가능한 컨트롤
+  - 우측 패널: matplotlib 캔버스 (9×6 인치)
 
 #### diffreact_gui/utils.py
 - **역할**: 유틸리티 함수
@@ -129,6 +172,10 @@ diffusion_simulator/
   - Material library 관리 (load/save/add)
   - 누적 적분 계산
   - 로깅 설정
+  - 실험 데이터 저장/로드 (Phase 12)
+- **Phase 12 추가 함수**:
+  - `save_experimental_data()`: ExperimentalData를 JSON 파일로 저장
+  - `load_experimental_data()`: JSON 파일에서 ExperimentalData 로드
 
 #### diffreact_gui/config.py
 - **역할**: 기본 설정
@@ -157,6 +204,13 @@ diffusion_simulator/
 - 순수 확산 테스트
 - 정상 상태 비교 테스트
 - 질량 보존 테스트
+
+#### tests/test_analysis.py
+- 도핑 분석 모듈 단위 테스트 (Phase 12)
+- 커패시터 계산 테스트 (4개)
+- 3D 보간 테스트 (6개)
+- 플롯 데이터 준비 테스트 (5개)
+- 총 15개 테스트 케이스 (모두 통과)
 
 #### run_tests.py
 - 모든 테스트 실행
@@ -205,6 +259,7 @@ diffusion_simulator/
 - **필수 패키지만 포함**:
   - `numpy` - 수치 계산
   - `matplotlib` - 시각화
+  - `scipy` - 과학 계산 (Phase 12: 3D 보간)
 
 #### requirements-dev.txt
 - **개발 도구 포함**:
@@ -231,6 +286,13 @@ diffusion_simulator/
 ```
 main.py
   ├── gui_elements.py
+  │     ├── analysis_ui.py (Phase 12)
+  │     │     ├── analysis.py
+  │     │     │     ├── models.py
+  │     │     │     └── scipy.interpolate
+  │     │     ├── plots.py
+  │     │     ├── models.py
+  │     │     └── utils.py
   │     ├── plots.py
   │     ├── models.py
   │     ├── solver.py
