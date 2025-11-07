@@ -906,7 +906,17 @@ class AnalysisTab(ttk.Frame):
         # Embed in tkinter
         self.analysis_canvas = FigureCanvasTkAgg(fig, master=frm_right)
         self.analysis_canvas.draw_idle()
-        self.analysis_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        analysis_canvas_widget = self.analysis_canvas.get_tk_widget()
+        analysis_canvas_widget.pack(fill=tk.BOTH, expand=True)
+
+        # Make canvas responsive to window resize
+        def _on_canvas_resize(event):
+            try:
+                fig.tight_layout()
+                self.analysis_canvas.draw_idle()
+            except Exception:
+                pass  # Ignore resize errors during initialization
+        analysis_canvas_widget.bind("<Configure>", _on_canvas_resize)
 
         # Toolbar
         self.analysis_toolbar = NavigationToolbar2Tk(self.analysis_canvas, frm_right)

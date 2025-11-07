@@ -698,8 +698,8 @@ class App(tk.Tk):
         self.analysis_controls_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.analysis_controls_frame, text="Analysis")
 
-        # Create canvas and scrollbar for analysis tab
-        self.canvas_analysis = tk.Canvas(self.analysis_controls_frame, width=550)
+        # Create canvas and scrollbar for analysis tab (responsive width, no fixed width)
+        self.canvas_analysis = tk.Canvas(self.analysis_controls_frame)
         self.scrollbar_analysis = ttk.Scrollbar(self.analysis_controls_frame, orient="vertical", command=self.canvas_analysis.yview)
         self.scrollable_analysis = ttk.Frame(self.canvas_analysis)
 
@@ -708,19 +708,33 @@ class App(tk.Tk):
             lambda e: self.canvas_analysis.configure(scrollregion=self.canvas_analysis.bbox("all"))
         )
 
-        self.canvas_analysis.create_window((0, 0), window=self.scrollable_analysis, anchor="nw")
+        self.canvas_analysis_window = self.canvas_analysis.create_window((0, 0), window=self.scrollable_analysis, anchor="nw")
         self.canvas_analysis.configure(yscrollcommand=self.scrollbar_analysis.set)
 
-        # Mouse wheel scrolling for analysis tab
+        # Mouse wheel scrolling for analysis tab - only when mouse is over this canvas
         def _on_mousewheel_analysis(event):
             self.canvas_analysis.yview_scroll(int(-1*(event.delta/120)), "units")
-        self.canvas_analysis.bind_all("<MouseWheel>", _on_mousewheel_analysis)
+
+        def _bind_analysis_scroll(event):
+            self.canvas_analysis.bind_all("<MouseWheel>", _on_mousewheel_analysis)
+
+        def _unbind_analysis_scroll(event):
+            self.canvas_analysis.unbind_all("<MouseWheel>")
+
+        self.canvas_analysis.bind("<Enter>", _bind_analysis_scroll)
+        self.canvas_analysis.bind("<Leave>", _unbind_analysis_scroll)
 
         self.canvas_analysis.pack(side="left", fill="both", expand=True)
         self.scrollbar_analysis.pack(side="right", fill="y")
 
-        # Create canvas and scrollbar for setup tab
-        self.canvas_setup = tk.Canvas(self.setup_frame, width=550)
+        # Bind canvas resize to update inner frame width
+        def _on_analysis_canvas_resize(event):
+            # Set the width of the canvas window to match canvas width
+            self.canvas_analysis.itemconfig(self.canvas_analysis_window, width=event.width)
+        self.canvas_analysis.bind("<Configure>", _on_analysis_canvas_resize)
+
+        # Create canvas and scrollbar for setup tab (responsive width, no fixed width)
+        self.canvas_setup = tk.Canvas(self.setup_frame)
         self.scrollbar_setup = ttk.Scrollbar(self.setup_frame, orient="vertical", command=self.canvas_setup.yview)
         self.scrollable_setup = ttk.Frame(self.canvas_setup)
 
@@ -729,19 +743,33 @@ class App(tk.Tk):
             lambda e: self.canvas_setup.configure(scrollregion=self.canvas_setup.bbox("all"))
         )
 
-        self.canvas_setup.create_window((0, 0), window=self.scrollable_setup, anchor="nw")
+        self.canvas_setup_window = self.canvas_setup.create_window((0, 0), window=self.scrollable_setup, anchor="nw")
         self.canvas_setup.configure(yscrollcommand=self.scrollbar_setup.set)
 
-        # Mouse wheel scrolling for setup tab
+        # Mouse wheel scrolling for setup tab - only when mouse is over this canvas
         def _on_mousewheel_setup(event):
             self.canvas_setup.yview_scroll(int(-1*(event.delta/120)), "units")
-        self.canvas_setup.bind_all("<MouseWheel>", _on_mousewheel_setup)
+
+        def _bind_setup_scroll(event):
+            self.canvas_setup.bind_all("<MouseWheel>", _on_mousewheel_setup)
+
+        def _unbind_setup_scroll(event):
+            self.canvas_setup.unbind_all("<MouseWheel>")
+
+        self.canvas_setup.bind("<Enter>", _bind_setup_scroll)
+        self.canvas_setup.bind("<Leave>", _unbind_setup_scroll)
 
         self.canvas_setup.pack(side="left", fill="both", expand=True)
         self.scrollbar_setup.pack(side="right", fill="y")
 
-        # Create canvas and scrollbar for results tab
-        self.canvas_results = tk.Canvas(self.results_frame, width=550)
+        # Bind canvas resize to update inner frame width
+        def _on_setup_canvas_resize(event):
+            # Set the width of the canvas window to match canvas width
+            self.canvas_setup.itemconfig(self.canvas_setup_window, width=event.width)
+        self.canvas_setup.bind("<Configure>", _on_setup_canvas_resize)
+
+        # Create canvas and scrollbar for results tab (responsive width, no fixed width)
+        self.canvas_results = tk.Canvas(self.results_frame)
         self.scrollbar_results = ttk.Scrollbar(self.results_frame, orient="vertical", command=self.canvas_results.yview)
         self.scrollable_results = ttk.Frame(self.canvas_results)
 
@@ -750,16 +778,30 @@ class App(tk.Tk):
             lambda e: self.canvas_results.configure(scrollregion=self.canvas_results.bbox("all"))
         )
 
-        self.canvas_results.create_window((0, 0), window=self.scrollable_results, anchor="nw")
+        self.canvas_results_window = self.canvas_results.create_window((0, 0), window=self.scrollable_results, anchor="nw")
         self.canvas_results.configure(yscrollcommand=self.scrollbar_results.set)
 
-        # Mouse wheel scrolling for results tab
+        # Mouse wheel scrolling for results tab - only when mouse is over this canvas
         def _on_mousewheel_results(event):
             self.canvas_results.yview_scroll(int(-1*(event.delta/120)), "units")
-        self.canvas_results.bind_all("<MouseWheel>", _on_mousewheel_results)
+
+        def _bind_results_scroll(event):
+            self.canvas_results.bind_all("<MouseWheel>", _on_mousewheel_results)
+
+        def _unbind_results_scroll(event):
+            self.canvas_results.unbind_all("<MouseWheel>")
+
+        self.canvas_results.bind("<Enter>", _bind_results_scroll)
+        self.canvas_results.bind("<Leave>", _unbind_results_scroll)
 
         self.canvas_results.pack(side="left", fill="both", expand=True)
         self.scrollbar_results.pack(side="right", fill="y")
+
+        # Bind canvas resize to update inner frame width
+        def _on_results_canvas_resize(event):
+            # Set the width of the canvas window to match canvas width
+            self.canvas_results.itemconfig(self.canvas_results_window, width=event.width)
+        self.canvas_results.bind("<Configure>", _on_results_canvas_resize)
 
         # Build UI elements
         self._build_setup_tab(self.scrollable_setup)
@@ -780,7 +822,18 @@ class App(tk.Tk):
         self.artists = artists
         self.canvas = FigureCanvasTkAgg(fig, master=self.sim_results_panel)
         self.canvas.draw_idle()
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        canvas_widget = self.canvas.get_tk_widget()
+        canvas_widget.pack(fill=tk.BOTH, expand=True)
+
+        # Make canvas responsive to window resize
+        def _on_canvas_resize(event):
+            try:
+                fig.tight_layout()
+                self.canvas.draw_idle()
+            except Exception:
+                pass  # Ignore resize errors during initialization
+        canvas_widget.bind("<Configure>", _on_canvas_resize)
+
         self.toolbar = NavigationToolbar2Tk(self.canvas, self.sim_results_panel)
         self.toolbar.update()
         self._flux_visibility_map = {
@@ -841,7 +894,18 @@ class App(tk.Tk):
 
         self.analysis_canvas = FigureCanvasTkAgg(analysis_fig, master=self.analysis_panel)
         self.analysis_canvas.draw_idle()
-        self.analysis_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        analysis_canvas_widget = self.analysis_canvas.get_tk_widget()
+        analysis_canvas_widget.pack(fill=tk.BOTH, expand=True)
+
+        # Make analysis canvas responsive to window resize
+        def _on_analysis_canvas_resize(event):
+            try:
+                analysis_fig.tight_layout()
+                self.analysis_canvas.draw_idle()
+            except Exception:
+                pass  # Ignore resize errors during initialization
+        analysis_canvas_widget.bind("<Configure>", _on_analysis_canvas_resize)
+
         self.analysis_toolbar = NavigationToolbar2Tk(self.analysis_canvas, self.analysis_panel)
         self.analysis_toolbar.update()
 
