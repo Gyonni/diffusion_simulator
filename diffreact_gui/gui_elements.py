@@ -694,44 +694,9 @@ class App(tk.Tk):
         self.results_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.results_frame, text="Results")
 
-        # Analysis tab (doping analysis) - controls in left panel
+        # Analysis tab (doping analysis) - now uses AnalysisTab class
         self.analysis_controls_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.analysis_controls_frame, text="Analysis")
-
-        # Create canvas and scrollbar for analysis tab (responsive width, no fixed width)
-        self.canvas_analysis = tk.Canvas(self.analysis_controls_frame)
-        self.scrollbar_analysis = ttk.Scrollbar(self.analysis_controls_frame, orient="vertical", command=self.canvas_analysis.yview)
-        self.scrollable_analysis = ttk.Frame(self.canvas_analysis)
-
-        self.scrollable_analysis.bind(
-            "<Configure>",
-            lambda e: self.canvas_analysis.configure(scrollregion=self.canvas_analysis.bbox("all"))
-        )
-
-        self.canvas_analysis_window = self.canvas_analysis.create_window((0, 0), window=self.scrollable_analysis, anchor="nw")
-        self.canvas_analysis.configure(yscrollcommand=self.scrollbar_analysis.set)
-
-        # Mouse wheel scrolling for analysis tab - only when mouse is over this canvas
-        def _on_mousewheel_analysis(event):
-            self.canvas_analysis.yview_scroll(int(-1*(event.delta/120)), "units")
-
-        def _bind_analysis_scroll(event):
-            self.canvas_analysis.bind_all("<MouseWheel>", _on_mousewheel_analysis)
-
-        def _unbind_analysis_scroll(event):
-            self.canvas_analysis.unbind_all("<MouseWheel>")
-
-        self.canvas_analysis.bind("<Enter>", _bind_analysis_scroll)
-        self.canvas_analysis.bind("<Leave>", _unbind_analysis_scroll)
-
-        self.canvas_analysis.pack(side="left", fill="both", expand=True)
-        self.scrollbar_analysis.pack(side="right", fill="y")
-
-        # Bind canvas resize to update inner frame width
-        def _on_analysis_canvas_resize(event):
-            # Set the width of the canvas window to match canvas width
-            self.canvas_analysis.itemconfig(self.canvas_analysis_window, width=event.width)
-        self.canvas_analysis.bind("<Configure>", _on_analysis_canvas_resize)
 
         # Create canvas and scrollbar for setup tab (responsive width, no fixed width)
         self.canvas_setup = tk.Canvas(self.setup_frame)
@@ -806,7 +771,6 @@ class App(tk.Tk):
         # Build UI elements
         self._build_setup_tab(self.scrollable_setup)
         self._build_results_tab(self.scrollable_results)
-        self._build_analysis_tab(self.scrollable_analysis)
 
         # Create two right panels: one for simulation, one for analysis
         # Simulation results panel
@@ -816,6 +780,14 @@ class App(tk.Tk):
         # Analysis panel (initially hidden)
         self.analysis_panel = ttk.Frame(self.frm_right)
         # Don't pack it yet - will be shown when Analysis tab is selected
+
+        # Use AnalysisTab class with separated panels
+        self.analysis_tab_widget = AnalysisTab(
+            parent_controls=self.analysis_controls_frame,
+            parent_graph=self.analysis_panel,
+            app_ref=self
+        )
+        self.analysis_tab_widget.initialize()
 
         # Build simulation graphs in sim_results_panel
         fig, artists = create_figures()
@@ -843,48 +815,7 @@ class App(tk.Tk):
             "Probe (custom)": ("line_J_probe", "line_cum_probe"),
         }
 
-        # Time controls in sim_results_panel
-        self.time_label = ttk.Label(self.sim_results_panel, text="Time [s]: 0.0", font=("TkDefaultFont", 11))
-        self.time_label.pack(fill=tk.X, pady=(8, 0))
-        self.sld_time = tk.Scale(
-            self.sim_results_panel,
-            from_=0,
-            to=0,
-            orient=tk.HORIZONTAL,
-            resolution=1,
-            showvalue=False,
-            command=self._on_time_slider,
-            state="disabled",
-        )
-        self.sld_time.pack(fill=tk.X)
-
-        time_ctrl = ttk.Frame(self.sim_results_panel)
-        time_ctrl.pack(fill=tk.X, pady=(4, 6))
-
-        time_btn_style = ttk.Style()
-        time_btn_style.configure('Time.TButton', padding=6, font=("TkDefaultFont", 11))
-
-        self.btn_time_prev = ttk.Button(time_ctrl, text="◀", width=4, command=lambda: self._step_time(-1), state="disabled", style='Time.TButton')
-        self.btn_time_prev.pack(side=tk.LEFT, padx=4)
-
-        self.time_spin_var = tk.StringVar(value="0")
-        self.spn_time = ttk.Spinbox(
-            time_ctrl,
-            from_=0,
-            to=0,
-            textvariable=self.time_spin_var,
-            width=10,
-            justify="center",
-            state="disabled",
-            wrap=False,
-            command=self._on_spinbox_change,
-            font=("TkDefaultFont", 11),
-        )
-        self.spn_time.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=4)
-        self.spn_time.bind("<Return>", self._on_spinbox_event)
-
-        self.btn_time_next = ttk.Button(time_ctrl, text="▶", width=4, command=lambda: self._step_time(1), state="disabled", style='Time.TButton')
-        self.btn_time_next.pack(side=tk.LEFT, padx=4)
+        # Time controls moved to Results tab (Graph 3 section)
 
         # Build Analysis graph in analysis_panel (graph only, controls are in left panel)
         from .plots import create_analysis_figure
@@ -1123,6 +1054,53 @@ class App(tk.Tk):
         temp_select_g3.pack_forget()
         self.temp_select_frame_g3 = temp_select_g3
 
+        # Time slider and controls for navigating through time steps
+        ttk.Separator(graph3_frame, orient="horizontal").pack(fill=tk.X, pady=8)
+        ttk.Label(graph3_frame, text="Time Navigation:", font=bold_font).pack(anchor=tk.W, padx=4, pady=(4, 2))
+
+        self.time_label = ttk.Label(graph3_frame, text="Time [s]: 0.0", font=label_font)
+        self.time_label.pack(fill=tk.X, padx=4, pady=3)
+
+        self.sld_time = tk.Scale(
+            graph3_frame,
+            from_=0,
+            to=0,
+            orient=tk.HORIZONTAL,
+            resolution=1,
+            showvalue=False,
+            command=self._on_time_slider,
+            state="disabled",
+        )
+        self.sld_time.pack(fill=tk.X, padx=4, pady=3)
+
+        time_ctrl = ttk.Frame(graph3_frame)
+        time_ctrl.pack(fill=tk.X, padx=4, pady=4)
+
+        time_btn_style = ttk.Style()
+        time_btn_style.configure('Time.TButton', padding=6, font=("TkDefaultFont", 11))
+
+        self.btn_time_prev = ttk.Button(time_ctrl, text="◀", width=4, command=lambda: self._step_time(-1), state="disabled", style='Time.TButton')
+        self.btn_time_prev.pack(side=tk.LEFT, padx=4)
+
+        self.time_spin_var = tk.StringVar(value="0")
+        self.spn_time = ttk.Spinbox(
+            time_ctrl,
+            from_=0,
+            to=0,
+            textvariable=self.time_spin_var,
+            width=10,
+            justify="center",
+            state="disabled",
+            wrap=False,
+            command=self._on_spinbox_change,
+            font=("TkDefaultFont", 11),
+        )
+        self.spn_time.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=4)
+        self.spn_time.bind("<Return>", self._on_spinbox_event)
+
+        self.btn_time_next = ttk.Button(time_ctrl, text="▶", width=4, command=lambda: self._step_time(1), state="disabled", style='Time.TButton')
+        self.btn_time_next.pack(side=tk.LEFT, padx=4)
+
         # ========== Section 4: Graph 4 - C vs Temperature ==========
         graph4_frame = ttk.LabelFrame(parent, text="Graph 4: Concentration vs Temperature", padding=8)
         graph4_frame.pack(fill=tk.X, pady=(8, 0))
@@ -1141,7 +1119,19 @@ class App(tk.Tk):
         ttk.Button(time_row_g4, text="Update", command=self._update_temperature_plot, style='Probe.TButton').pack(side=tk.LEFT, padx=6)
 
     def _build_analysis_tab(self, parent: tk.Widget) -> None:
-        """Build the Analysis tab with analysis controls."""
+        """
+        Build the Analysis tab - now deprecated.
+        Analysis tab is handled by AnalysisTab class directly.
+        This method is kept as a stub for backward compatibility.
+        """
+        pass  # Analysis tab now uses AnalysisTab class from analysis_ui.py
+
+    def _build_analysis_tab_OLD_DEPRECATED(self, parent: tk.Widget) -> None:
+        """
+        OLD CODE - DEPRECATED - DO NOT USE
+        This entire method has been replaced by AnalysisTab class.
+        Kept for reference only.
+        """
         from .analysis_ui import ExperimentalDataTable
         from .models import CapacitorParams
         from .analysis import calculate_capacitance, calculate_dq_grid, prepare_plot_data

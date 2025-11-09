@@ -12,7 +12,14 @@ import numpy as np
 import csv
 
 from .models import CapacitorParams, ExperimentalData
-from .analysis import calculate_capacitance, calculate_dq_grid, prepare_plot_data
+from .analysis import (
+    calculate_capacitance,
+    calculate_dq_grid,
+    prepare_plot_data,
+    calculate_global_fit_metrics,
+    prepare_global_scatter_data,
+    prepare_residual_heatmap_data,
+)
 from .plots import create_analysis_figure, update_analysis_plot
 from .utils import save_experimental_data, load_experimental_data
 
@@ -613,19 +620,25 @@ class AnalysisTab(ttk.Frame):
 
     Combines capacitor parameter input, experimental data table,
     plot controls, and visualization in a single interface.
+
+    Note: This class is designed to work with gui_elements.py's panel structure.
+    The controls go in the left panel, and the graph panel is created separately
+    in the right panel via get_graph_panel().
     """
 
-    def __init__(self, parent, app_ref=None, **kwargs):
+    def __init__(self, parent_controls, parent_graph, app_ref=None, **kwargs):
         """
         Initialize Analysis tab.
 
         Args:
-            parent: Parent widget
+            parent_controls: Parent widget for left panel controls (e.g., analysis_controls_frame)
+            parent_graph: Parent widget for right panel graph (e.g., analysis_panel)
             app_ref: Reference to main App instance (for accessing simulation results)
             **kwargs: Additional arguments passed to Frame
         """
-        super().__init__(parent, **kwargs)
-
+        # Store parent references
+        self.parent_controls = parent_controls
+        self.parent_graph = parent_graph
         self.app_ref = app_ref
 
         # Current state
@@ -658,10 +671,12 @@ class AnalysisTab(ttk.Frame):
         self.var_sim_y = tk.StringVar(value="C")
         self.var_sim_filter_1 = tk.StringVar(value="100.0")
         self.var_sim_filter_2 = tk.StringVar(value="1e-6")
-        self.var_exp_filter = tk.StringVar(value="100.0")
+        self.var_exp_filter_1 = tk.StringVar(value="100.0")
+        self.var_exp_filter_2 = tk.StringVar(value="1e-6")
 
-        # Build UI
-        self._build_ui()
+        # Build UI in separate panels
+        self._build_controls_ui()
+        self._build_graph_ui()
 
         # Update capacitor params callback
         self.var_epsilon_r.trace_add("write", lambda *args: self._update_capacitance())
@@ -673,24 +688,13 @@ class AnalysisTab(ttk.Frame):
         self.fixed_var.trace_add("write", lambda *args: self._update_variable_selections())
         self.var_x_axis.trace_add("write", lambda *args: self._update_filter_labels())
 
-    def _build_ui(self):
-        """Build the Analysis tab UI."""
-        # Since this tab now occupies the full right panel, we can use full width
-        # Use PanedWindow for resizable left controls and right plot
-        paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
-        paned.pack(fill=tk.BOTH, expand=True)
-
-        # Left panel: Controls (30% of width)
-        frm_left = ttk.Frame(paned)
-        paned.add(frm_left, weight=1)
-
-        # Right panel: Plot (70% of width)
-        frm_right = ttk.Frame(paned)
-        paned.add(frm_right, weight=2)
+    def _build_controls_ui(self):
+        """Build the left panel controls UI."""
+        # This replaces the old frm_left logic
 
         # Create scrollable canvas for left panel
-        canvas = tk.Canvas(frm_left)
-        scrollbar = ttk.Scrollbar(frm_left, orient="vertical", command=canvas.yview)
+        canvas = tk.Canvas(self.parent_controls)
+        scrollbar = ttk.Scrollbar(self.parent_controls, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
 
         scrollable_frame.bind(
@@ -698,13 +702,26 @@ class AnalysisTab(ttk.Frame):
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
 
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        # Mouse wheel scrolling
+        # Mouse wheel scrolling - only when mouse is over canvas
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        def _bind_scroll(event):
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        def _unbind_scroll(event):
+            canvas.unbind_all("<MouseWheel>")
+
+        canvas.bind("<Enter>", _bind_scroll)
+        canvas.bind("<Leave>", _unbind_scroll)
+
+        # Bind canvas resize to update inner frame width
+        def _on_canvas_resize(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+        canvas.bind("<Configure>", _on_canvas_resize)
 
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
@@ -876,9 +893,14 @@ class AnalysisTab(ttk.Frame):
         ttk.Label(plot_ctrl_frame, text="Filters (Experimental):", font=bold_font).grid(row=row, column=0, columnspan=2, sticky="w", padx=5, pady=3)
 
         row += 1
-        self.lbl_exp_filter = ttk.Label(plot_ctrl_frame, text="Time [s]:", font=label_font)
-        self.lbl_exp_filter.grid(row=row, column=0, sticky="w", padx=5, pady=3)
-        ttk.Entry(plot_ctrl_frame, textvariable=self.var_exp_filter, width=18, font=entry_font).grid(row=row, column=1, padx=5, pady=3)
+        self.lbl_exp_filter_1 = ttk.Label(plot_ctrl_frame, text="Time [s]:", font=label_font)
+        self.lbl_exp_filter_1.grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        ttk.Entry(plot_ctrl_frame, textvariable=self.var_exp_filter_1, width=18, font=entry_font).grid(row=row, column=1, padx=5, pady=3)
+
+        row += 1
+        self.lbl_exp_filter_2 = ttk.Label(plot_ctrl_frame, text="Position [m]:", font=label_font)
+        self.lbl_exp_filter_2.grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        ttk.Entry(plot_ctrl_frame, textvariable=self.var_exp_filter_2, width=18, font=entry_font).grid(row=row, column=1, padx=5, pady=3)
 
         row += 1
         ttk.Separator(plot_ctrl_frame, orient="horizontal").grid(row=row, column=0, columnspan=2, sticky="ew", pady=5)
@@ -897,6 +919,37 @@ class AnalysisTab(ttk.Frame):
         btn_font = ("TkDefaultFont", 10, "bold")
         ttk.Button(plot_ctrl_frame, text="📊 Update Plot", command=self._update_plot, width=25).grid(row=row, column=0, columnspan=2, pady=10)
 
+        # === Global Fit Analysis ===
+        fit_frame = ttk.LabelFrame(scrollable_frame, text="Global Fit Analysis", padding=10)
+        fit_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        ttk.Label(fit_frame, text="Evaluate overall agreement between simulation and all experimental data points.",
+                  font=("TkDefaultFont", 9, "italic"), foreground="gray40").grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=(0, 10))
+
+        # Calculate button
+        ttk.Button(fit_frame, text="🔍 Calculate Global Fit", command=self._calculate_global_fit, width=25).grid(row=1, column=0, columnspan=2, pady=5)
+
+        # Results display
+        self.lbl_fit_r2 = ttk.Label(fit_frame, text="R²: --", font=("TkDefaultFont", 10, "bold"))
+        self.lbl_fit_r2.grid(row=2, column=0, sticky="w", padx=5, pady=3)
+
+        self.lbl_fit_nrmse = ttk.Label(fit_frame, text="NRMSE: --", font=("TkDefaultFont", 10))
+        self.lbl_fit_nrmse.grid(row=2, column=1, sticky="w", padx=5, pady=3)
+
+        self.lbl_fit_npoints = ttk.Label(fit_frame, text="Data points: --", font=("TkDefaultFont", 9), foreground="gray40")
+        self.lbl_fit_npoints.grid(row=3, column=0, columnspan=2, sticky="w", padx=5, pady=3)
+
+        ttk.Separator(fit_frame, orient="horizontal").grid(row=4, column=0, columnspan=2, sticky="ew", pady=5)
+
+        # Visualization buttons
+        viz_frame = ttk.Frame(fit_frame)
+        viz_frame.grid(row=5, column=0, columnspan=2, pady=5)
+
+        ttk.Button(viz_frame, text="📈 Scatter Plot", command=self._show_scatter_plot, width=18).pack(side=tk.LEFT, padx=3)
+        ttk.Button(viz_frame, text="🗺️ Residual Heatmap", command=self._show_residual_heatmap, width=18).pack(side=tk.LEFT, padx=3)
+
+    def _build_graph_ui(self):
+        """Build the right panel graph UI."""
         # === Right Panel: Plot ===
         # Create analysis figure
         fig, ax_sim, ax_exp, artists = create_analysis_figure()
@@ -904,7 +957,7 @@ class AnalysisTab(ttk.Frame):
         self.analysis_artists = artists
 
         # Embed in tkinter
-        self.analysis_canvas = FigureCanvasTkAgg(fig, master=frm_right)
+        self.analysis_canvas = FigureCanvasTkAgg(fig, master=self.parent_graph)
         self.analysis_canvas.draw_idle()
         analysis_canvas_widget = self.analysis_canvas.get_tk_widget()
         analysis_canvas_widget.pack(fill=tk.BOTH, expand=True)
@@ -919,11 +972,11 @@ class AnalysisTab(ttk.Frame):
         analysis_canvas_widget.bind("<Configure>", _on_canvas_resize)
 
         # Toolbar
-        self.analysis_toolbar = NavigationToolbar2Tk(self.analysis_canvas, frm_right)
+        self.analysis_toolbar = NavigationToolbar2Tk(self.analysis_canvas, self.parent_graph)
         self.analysis_toolbar.update()
 
         # Save graph button
-        save_graph_frame = ttk.Frame(frm_right)
+        save_graph_frame = ttk.Frame(self.parent_graph)
         save_graph_frame.pack(fill=tk.X, pady=5, padx=10)
 
         # Style for larger buttons
@@ -933,6 +986,8 @@ class AnalysisTab(ttk.Frame):
         ttk.Button(save_graph_frame, text="💾 Save Graph PNG", command=self._save_graph_png, width=22, style='Large.TButton').pack(side=tk.LEFT, padx=5)
         ttk.Button(save_graph_frame, text="💾 Save Graph SVG", command=self._save_graph_svg, width=22, style='Large.TButton').pack(side=tk.LEFT, padx=5)
 
+    def initialize(self):
+        """Initialize UI state after both panels are built."""
         # Initial update
         self._update_capacitance()
         self._update_variable_selections()
@@ -1134,7 +1189,10 @@ class AnalysisTab(ttk.Frame):
         return self.current_exp_data
 
     def _update_filter_labels(self):
-        """Update filter labels based on X-axis selection."""
+        """
+        Update filter labels based on X-axis selection.
+        Also automatically synchronizes experimental data configuration.
+        """
         x_var = self.var_x_axis.get()
         all_vars = ["temperature", "time", "position"]
         filter_vars = [v for v in all_vars if v != x_var]
@@ -1148,11 +1206,25 @@ class AnalysisTab(ttk.Frame):
         if len(filter_vars) >= 2:
             self.lbl_sim_filter_2.config(text=f"{name_map[filter_vars[1]]} {unit_map[filter_vars[1]]}:")
 
-        # Update experimental filter label (only one filter needed - the non-row, non-col variable)
-        if self.current_exp_data:
-            exp_filter_var = [v for v in all_vars if v != x_var and v != self.current_exp_data.fixed_var]
-            if exp_filter_var:
-                self.lbl_exp_filter.config(text=f"{name_map[exp_filter_var[0]]} {unit_map[exp_filter_var[0]]}:")
+        # Update experimental filter labels (same as simulation - 2 filters for non-X axes)
+        if len(filter_vars) >= 1:
+            self.lbl_exp_filter_1.config(text=f"{name_map[filter_vars[0]]} {unit_map[filter_vars[0]]}:")
+        if len(filter_vars) >= 2:
+            self.lbl_exp_filter_2.config(text=f"{name_map[filter_vars[1]]} {unit_map[filter_vars[1]]}:")
+
+        # Synchronize experimental filter values with simulation filters
+        # This ensures both use the same filter values for consistency
+        try:
+            # Sync first filter
+            if self.var_sim_filter_1.get():
+                self.var_exp_filter_1.set(self.var_sim_filter_1.get())
+                print(f"[INFO] Synchronized exp_filter_1 = {self.var_sim_filter_1.get()}")
+            # Sync second filter
+            if len(filter_vars) >= 2 and self.var_sim_filter_2.get():
+                self.var_exp_filter_2.set(self.var_sim_filter_2.get())
+                print(f"[INFO] Synchronized exp_filter_2 = {self.var_sim_filter_2.get()}")
+        except Exception as e:
+            print(f"[WARNING] Filter synchronization failed: {e}")
 
     def _update_plot(self):
         """Update analysis plot with current data."""
@@ -1223,10 +1295,12 @@ class AnalysisTab(ttk.Frame):
             if len(filter_vars) >= 2:
                 sim_filters[filter_vars[1]] = float(self.var_sim_filter_2.get())
 
-            exp_filter_var = [v for v in all_vars if v != x_axis_var and v != exp_data.fixed_var]
-            exp_filter = {}
-            if exp_filter_var:
-                exp_filter[exp_filter_var[0]] = float(self.var_exp_filter.get())
+            # Experimental filters now match simulation filters (2 filters for non-X axes)
+            exp_filters = {}
+            if len(filter_vars) >= 1:
+                exp_filters[filter_vars[0]] = float(self.var_exp_filter_1.get())
+            if len(filter_vars) >= 2:
+                exp_filters[filter_vars[1]] = float(self.var_exp_filter_2.get())
 
             # Check if temperature sweep
             is_temp_sweep = "temperatures" in sim_results and sim_results["temperatures"] is not None
@@ -1238,7 +1312,7 @@ class AnalysisTab(ttk.Frame):
                 x_axis_var,
                 sim_y_var,
                 sim_filters,
-                exp_filter,
+                exp_filters,  # Changed from exp_filter to exp_filters (now 2 filters)
                 is_temperature_sweep=is_temp_sweep
             )
 
@@ -1387,3 +1461,303 @@ class AnalysisTab(ttk.Frame):
             messagebox.showinfo("Success", f"Graph saved to {filename}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save graph:\n{str(e)}")
+
+    def _calculate_global_fit(self):
+        """Calculate and display global fit metrics (R², NRMSE)."""
+        print("[DEBUG _calculate_global_fit] Starting...")
+
+        # Get experimental data
+        if self.data_source_mode.get() == "current":
+            # Use current table data
+            exp_data = self._get_exp_data_from_current_table()
+            if exp_data is None:
+                return  # Error already shown
+        else:
+            # Use loaded dataset
+            exp_data = self.current_exp_data
+            if exp_data is None:
+                messagebox.showwarning("No Data", "Please load a dataset first or enter data in the table.")
+                return
+
+        # Get simulation results from app_ref
+        if self.app_ref is None:
+            messagebox.showwarning("No Simulation", "app_ref is not available. Cannot access simulation results.")
+            return
+
+        if not hasattr(self.app_ref, 'results') or self.app_ref.results is None:
+            messagebox.showwarning("No Simulation", "Please run a simulation first in the Setup tab.")
+            return
+
+        sim_results = self.app_ref.results
+        is_temperature_sweep = getattr(self.app_ref, 'is_temperature_sweep', False)
+
+        # Get simulation Y variable
+        sim_y_var = self.var_sim_y.get()
+
+        try:
+            # Calculate metrics using trellis approach (per-facet R²)
+            from diffreact_gui.analysis import prepare_trellis_scatter_data
+            trellis_data = prepare_trellis_scatter_data(
+                sim_results=sim_results,
+                exp_data=exp_data,
+                sim_y_var=sim_y_var,
+                is_temperature_sweep=is_temperature_sweep
+            )
+
+            # Get overall R² and mean of facet R²s
+            r2_overall = trellis_data['overall_r_squared']
+            r2_facets = [f['r_squared'] for f in trellis_data['facet_data']]
+            r2_mean = np.mean(r2_facets)
+            r2_std = np.std(r2_facets)
+            n_facets = len(trellis_data['facet_data'])
+
+            # Calculate NRMSE from overall fit (legacy metric)
+            metrics = calculate_global_fit_metrics(
+                sim_results=sim_results,
+                exp_data=exp_data,
+                sim_y_var=sim_y_var,
+                is_temperature_sweep=is_temperature_sweep
+            )
+            nrmse = metrics['nrmse']
+            n_points = metrics['n_points']
+
+            # Color code R² (green if good, yellow if moderate, red if poor)
+            if r2_mean >= 0.95:
+                r2_color = "green3"
+            elif r2_mean >= 0.85:
+                r2_color = "orange"
+            else:
+                r2_color = "red"
+
+            self.lbl_fit_r2.config(
+                text=f"R² (mean±std) = {r2_mean:.3f}±{r2_std:.3f} [{n_facets} facets]",
+                foreground=r2_color
+            )
+            self.lbl_fit_nrmse.config(text=f"NRMSE = {nrmse:.4f}, Overall R² = {r2_overall:.4f}")
+            self.lbl_fit_npoints.config(text=f"Data points: {n_points}")
+
+            print(f"[DEBUG] Global fit calculated: R²_mean={r2_mean:.4f}±{r2_std:.4f}, R²_overall={r2_overall:.4f}, NRMSE={nrmse:.4f}")
+
+        except Exception as e:
+            messagebox.showerror("Calculation Error", f"Failed to calculate global fit:\n{str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _show_scatter_plot(self):
+        """Show scatter plot of simulation vs experiment (all data points)."""
+        print("[DEBUG _show_scatter_plot] Starting...")
+
+        # Get experimental data
+        if self.data_source_mode.get() == "current":
+            exp_data = self._get_exp_data_from_current_table()
+            if exp_data is None:
+                return
+        else:
+            exp_data = self.current_exp_data
+            if exp_data is None:
+                messagebox.showwarning("No Data", "Please load a dataset or enter data in the table.")
+                return
+
+        # Get simulation results
+        if self.app_ref is None or not hasattr(self.app_ref, 'results') or self.app_ref.results is None:
+            messagebox.showwarning("No Simulation", "Please run a simulation first.")
+            return
+
+        sim_results = self.app_ref.results
+        is_temperature_sweep = getattr(self.app_ref, 'is_temperature_sweep', False)
+        sim_y_var = self.var_sim_y.get()
+
+        try:
+            # Get trellis scatter data (scientifically rigorous: separate R² for each condition)
+            from diffreact_gui.analysis import prepare_trellis_scatter_data
+            trellis_data = prepare_trellis_scatter_data(
+                sim_results=sim_results,
+                exp_data=exp_data,
+                sim_y_var=sim_y_var,
+                is_temperature_sweep=is_temperature_sweep
+            )
+
+            # Create popup window with trellis scatter plot
+            popup = tk.Toplevel(self.parent_controls)
+            popup.title("Trellis Scatter Plot: Faceted Linear Fit Analysis")
+            popup.geometry("1200x800")
+
+            import matplotlib.pyplot as plt
+            from matplotlib.figure import Figure
+            import math
+
+            # Calculate subplot grid layout
+            n_facets = len(trellis_data["facet_data"])
+            n_cols = min(3, n_facets)  # Max 3 columns
+            n_rows = math.ceil(n_facets / n_cols)
+
+            fig = Figure(figsize=(4 * n_cols, 3.5 * n_rows))
+
+            # Create each facet subplot
+            for idx, facet in enumerate(trellis_data["facet_data"]):
+                ax = fig.add_subplot(n_rows, n_cols, idx + 1)
+
+                # Scatter plot for this facet
+                ax.scatter(facet["sim_values"], facet["exp_values"],
+                          alpha=0.7, s=60, edgecolors='k', linewidth=0.7)
+
+                # Best-fit line for this facet (only if slope is not NaN)
+                if not np.isnan(facet["slope"]):
+                    min_val = np.min(facet["sim_values"])
+                    max_val = np.max(facet["sim_values"])
+                    x_fit = np.linspace(min_val, max_val, 100)
+                    y_fit = facet["slope"] * x_fit + facet["intercept"]
+                    ax.plot(x_fit, y_fit, 'r-', linewidth=2, alpha=0.8)
+
+                # Display R² for this facet
+                ax.text(0.05, 0.95, f'R² = {facet["r_squared"]:.3f}',
+                       transform=ax.transAxes, fontsize=10, verticalalignment='top',
+                       bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7))
+
+                ax.set_xlabel(f'Simulation ({sim_y_var})', fontsize=9)
+                ax.set_ylabel('Experiment (dq)', fontsize=9)
+                ax.set_title(facet["facet_label"], fontsize=10, fontweight='bold')
+                ax.grid(True, alpha=0.3)
+
+            # Add overall R² as suptitle
+            fig.suptitle(
+                f'Trellis Scatter Plot: Faceted by {trellis_data["facet_var"]}\n' +
+                f'Overall R² = {trellis_data["overall_r_squared"]:.4f} ' +
+                f'(Mean of facets: {np.mean([f["r_squared"] for f in trellis_data["facet_data"]]):.4f})',
+                fontsize=13, fontweight='bold'
+            )
+
+            fig.tight_layout(rect=[0, 0, 1, 0.96])  # Leave space for suptitle
+
+            # Embed in popup
+            canvas = FigureCanvasTkAgg(fig, master=popup)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+            toolbar = NavigationToolbar2Tk(canvas, popup)
+            toolbar.update()
+
+            print(f"[DEBUG] Trellis scatter plot displayed: {n_facets} facets, overall R²={trellis_data['overall_r_squared']:.4f}")
+
+        except Exception as e:
+            messagebox.showerror("Plot Error", f"Failed to create scatter plot:\n{str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _show_residual_heatmap(self):
+        """Show residual heatmap matching experimental data grid structure."""
+        print("[DEBUG _show_residual_heatmap] Starting...")
+
+        # Get experimental data
+        if self.data_source_mode.get() == "current":
+            exp_data = self._get_exp_data_from_current_table()
+            if exp_data is None:
+                return
+        else:
+            exp_data = self.current_exp_data
+            if exp_data is None:
+                messagebox.showwarning("No Data", "Please load a dataset or enter data in the table.")
+                return
+
+        # Get simulation results
+        if self.app_ref is None or not hasattr(self.app_ref, 'results') or self.app_ref.results is None:
+            messagebox.showwarning("No Simulation", "Please run a simulation first.")
+            return
+
+        sim_results = self.app_ref.results
+        is_temperature_sweep = getattr(self.app_ref, 'is_temperature_sweep', False)
+        sim_y_var = self.var_sim_y.get()
+
+        try:
+            # Get heatmap data (percent error)
+            row_vals, col_vals, residual_grid = prepare_residual_heatmap_data(
+                sim_results=sim_results,
+                exp_data=exp_data,
+                sim_y_var=sim_y_var,
+                is_temperature_sweep=is_temperature_sweep,
+                residual_type="percent"  # Show % error
+            )
+
+            # Create popup window
+            popup = tk.Toplevel(self.parent_controls)
+            popup.title("Residual Heatmap (% Error)")
+            popup.geometry("900x700")
+
+            import matplotlib.pyplot as plt
+            from matplotlib.figure import Figure
+
+            fig = Figure(figsize=(9, 7))
+            ax = fig.add_subplot(111)
+
+            # Heatmap
+            im = ax.imshow(residual_grid, cmap='RdBu_r', aspect='auto', interpolation='nearest')
+
+            # Set ticks and labels
+            ax.set_xticks(range(len(col_vals)))
+            ax.set_yticks(range(len(row_vals)))
+            ax.set_xticklabels([f'{v:.2e}' for v in col_vals], rotation=45, ha='right')
+            ax.set_yticklabels([f'{v:.2e}' for v in row_vals])
+
+            ax.set_xlabel(f'{exp_data.col_var.capitalize()}', fontsize=12)
+            ax.set_ylabel(f'{exp_data.row_var.capitalize()}', fontsize=12)
+            ax.set_title('Residual Heatmap: % Error from Best-Fit Line', fontsize=14, fontweight='bold')
+
+            # Colorbar
+            cbar = fig.colorbar(im, ax=ax)
+            cbar.set_label('% Error from Linear Fit', fontsize=11)
+
+            # Add text annotations
+            for i in range(len(row_vals)):
+                for j in range(len(col_vals)):
+                    text_color = 'white' if abs(residual_grid[i, j]) > np.max(np.abs(residual_grid)) / 2 else 'black'
+                    ax.text(j, i, f'{residual_grid[i, j]:.1f}%', ha='center', va='center', color=text_color, fontsize=9)
+
+            fig.tight_layout()
+
+            # Embed in popup
+            canvas = FigureCanvasTkAgg(fig, master=popup)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+            toolbar = NavigationToolbar2Tk(canvas, popup)
+            toolbar.update()
+
+            print(f"[DEBUG] Residual heatmap displayed: {residual_grid.shape}")
+
+        except Exception as e:
+            messagebox.showerror("Plot Error", f"Failed to create residual heatmap:\n{str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _get_exp_data_from_current_table(self) -> Optional[ExperimentalData]:
+        """Helper to get ExperimentalData from current table state."""
+        try:
+            # Get capacitor params
+            epsilon_r = float(self.var_epsilon_r.get())
+            A = float(self.var_A.get())
+            d = float(self.var_d.get())
+            V0 = float(self.var_V0.get())
+            params = CapacitorParams(epsilon_r=epsilon_r, A=A, d=d, V0=V0)
+
+            # Set capacitor params in table
+            self.data_table.update_capacitor_params(params)
+
+            # Get experimental data from table
+            exp_data = self.data_table.get_experimental_data(
+                name=self.var_dataset_name.get() or "Current",
+                fixed_var=self.fixed_var.get(),
+                fixed_value=float(self.var_fixed_value.get()),
+                row_var=self.row_var.get(),
+                col_var=self.col_var.get()
+            )
+
+            return exp_data
+
+        except ValueError as e:
+            messagebox.showerror("Invalid Input", f"Please check capacitor parameters:\n{str(e)}")
+            return None
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to get experimental data:\n{str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None

@@ -38,7 +38,10 @@
       "Bash(\"venv/Scripts/python.exe\" -m pip install scipy)",
       "Bash(del temp_plot_additions.txt)",
       "Bash(git checkout:*)",
-      "Bash(timeout /t 3)"
+      "Bash(timeout /t 3)",
+      "Bash(timeout /t 5)",
+      "Bash(timeout /t 2)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []
