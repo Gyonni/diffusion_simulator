@@ -15,6 +15,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.figure import Figure
 
 from .analysis_ui import AnalysisTab
+from .optimization_ui import OptimizationTab
 
 _HTML_AVAILABLE = False
 try:  # pragma: no cover - optional dependency
@@ -698,6 +699,10 @@ class App(tk.Tk):
         self.analysis_controls_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.analysis_controls_frame, text="Analysis")
 
+        # Optimization tab - parameter optimization using grid search
+        self.optimization_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.optimization_frame, text="Optimization")
+
         # Create canvas and scrollbar for setup tab (responsive width, no fixed width)
         self.canvas_setup = tk.Canvas(self.setup_frame)
         self.scrollbar_setup = ttk.Scrollbar(self.setup_frame, orient="vertical", command=self.canvas_setup.yview)
@@ -768,11 +773,7 @@ class App(tk.Tk):
             self.canvas_results.itemconfig(self.canvas_results_window, width=event.width)
         self.canvas_results.bind("<Configure>", _on_results_canvas_resize)
 
-        # Build UI elements
-        self._build_setup_tab(self.scrollable_setup)
-        self._build_results_tab(self.scrollable_results)
-
-        # Create two right panels: one for simulation, one for analysis
+        # Create three right panels: simulation, analysis, and optimization
         # Simulation results panel
         self.sim_results_panel = ttk.Frame(self.frm_right)
         self.sim_results_panel.pack(fill=tk.BOTH, expand=True)
@@ -781,6 +782,10 @@ class App(tk.Tk):
         self.analysis_panel = ttk.Frame(self.frm_right)
         # Don't pack it yet - will be shown when Analysis tab is selected
 
+        # Optimization panel (initially hidden)
+        self.optimization_panel = ttk.Frame(self.frm_right)
+        # Don't pack it yet - will be shown when Optimization tab is selected
+
         # Use AnalysisTab class with separated panels
         self.analysis_tab_widget = AnalysisTab(
             parent_controls=self.analysis_controls_frame,
@@ -788,6 +793,18 @@ class App(tk.Tk):
             app_ref=self
         )
         self.analysis_tab_widget.initialize()
+
+        # Use OptimizationTab class (create before _build_setup_tab)
+        self.optimization_tab_widget = OptimizationTab(
+            parent=self.optimization_frame,
+            app_ref=self
+        )
+        self.optimization_tab_widget.pack(fill=tk.BOTH, expand=True)
+        # Will initialize layer names after layer table is created in _build_setup_tab
+
+        # Build UI elements (optimization_tab_widget must exist first)
+        self._build_setup_tab(self.scrollable_setup)
+        self._build_results_tab(self.scrollable_results)
 
         # Build simulation graphs in sim_results_panel
         fig, artists = create_figures()
@@ -840,6 +857,30 @@ class App(tk.Tk):
         self.analysis_toolbar = NavigationToolbar2Tk(self.analysis_canvas, self.analysis_panel)
         self.analysis_toolbar.update()
 
+        # Build Optimization graph in optimization_panel (graph only, controls are in left panel)
+        # Create a figure for optimization results visualization
+        import matplotlib.pyplot as plt
+        opt_fig = plt.figure(figsize=(10, 8))
+        self.optimization_fig = opt_fig
+        self.optimization_axes = {}  # Will be populated when optimization completes
+
+        self.optimization_canvas = FigureCanvasTkAgg(opt_fig, master=self.optimization_panel)
+        self.optimization_canvas.draw_idle()
+        opt_canvas_widget = self.optimization_canvas.get_tk_widget()
+        opt_canvas_widget.pack(fill=tk.BOTH, expand=True)
+
+        # Make optimization canvas responsive to window resize
+        def _on_opt_canvas_resize(event):
+            try:
+                opt_fig.tight_layout()
+                self.optimization_canvas.draw_idle()
+            except Exception:
+                pass  # Ignore resize errors during initialization
+        opt_canvas_widget.bind("<Configure>", _on_opt_canvas_resize)
+
+        self.optimization_toolbar = NavigationToolbar2Tk(self.optimization_canvas, self.optimization_panel)
+        self.optimization_toolbar.update()
+
     def _on_tab_changed(self, event=None):
         """Handle tab change events to switch between simulation and analysis panels."""
         selected_tab = self.notebook.select()
@@ -848,10 +889,17 @@ class App(tk.Tk):
         if tab_text == "Analysis":
             # Switch to analysis panel
             self.sim_results_panel.pack_forget()
+            self.optimization_panel.pack_forget()
             self.analysis_panel.pack(fill=tk.BOTH, expand=True)
+        elif tab_text == "Optimization":
+            # Switch to optimization panel
+            self.sim_results_panel.pack_forget()
+            self.analysis_panel.pack_forget()
+            self.optimization_panel.pack(fill=tk.BOTH, expand=True)
         else:
             # Switch to simulation results panel (Setup or Results tab)
             self.analysis_panel.pack_forget()
+            self.optimization_panel.pack_forget()
             self.sim_results_panel.pack(fill=tk.BOTH, expand=True)
 
     def _refresh_probe_layers(self) -> None:
@@ -911,6 +959,10 @@ class App(tk.Tk):
         ttk.Label(parent, text="Layers (top to bottom)", font=("TkDefaultFont", 11, "bold")).pack(anchor=tk.W, pady=(10, 0))
         self.layer_table = LayerTable(parent, list(defaults.layers), on_layers_changed=self._refresh_probe_layers)
         self.layer_table.pack(fill=tk.BOTH, expand=True, pady=6)
+
+        # Initialize optimization tab with layer names
+        layer_names = [layer.name for layer in defaults.layers]
+        self.optimization_tab_widget.initialize(layer_names)
 
         # Configure manual button style
         manual_btn_style = ttk.Style()

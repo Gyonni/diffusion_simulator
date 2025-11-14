@@ -334,7 +334,26 @@ def interpolate_simulation_data(
 
     # Interpolate
     interpolated_values = interp(points)
-    print(f"[DEBUG interpolate_simulation_data] Interpolated values: min={np.min(interpolated_values):.3e}, max={np.max(interpolated_values):.3e}, has_nan={np.any(np.isnan(interpolated_values))}")
+
+    # Check for issues in interpolated values
+    has_nan = np.any(np.isnan(interpolated_values))
+    has_inf = np.any(np.isinf(interpolated_values))
+    variance = np.var(interpolated_values)
+
+    print(f"[DEBUG interpolate_simulation_data] Interpolated values:")
+    print(f"  Range: [{np.nanmin(interpolated_values):.3e}, {np.nanmax(interpolated_values):.3e}]")
+    print(f"  Has NaN: {has_nan}, Has Inf: {has_inf}, Variance: {variance:.3e}")
+
+    if has_nan:
+        print(f"[WARNING] Interpolation produced {np.sum(np.isnan(interpolated_values))} NaN values!")
+        print("  This may indicate extrapolation issues or invalid simulation data")
+
+    if has_inf:
+        print(f"[WARNING] Interpolation produced {np.sum(np.isinf(interpolated_values))} infinite values!")
+
+    if variance < 1e-20 and not has_nan and not has_inf:
+        print(f"[WARNING] Interpolated values are constant (all ≈ {np.mean(interpolated_values):.3e})")
+        print("  Check if target coordinates match simulation grid properly")
 
     return interpolated_values
 
@@ -548,6 +567,43 @@ def calculate_global_fit_metrics(
 
     print(f"[DEBUG] Simulation values range: [{np.min(sim_values_flat):.3e}, {np.max(sim_values_flat):.3e}]")
 
+    # Check for valid data before regression
+    sim_variance = np.var(sim_values_flat)
+    exp_variance = np.var(exp_values_flat)
+
+    print(f"[DEBUG] Data statistics:")
+    print(f"  Sim variance: {sim_variance:.3e}, Exp variance: {exp_variance:.3e}")
+    print(f"  Sim mean: {np.mean(sim_values_flat):.3e}, Exp mean: {np.mean(exp_values_flat):.3e}")
+
+    # Check for constant values (no variance)
+    if sim_variance < 1e-20:
+        print("[WARNING] Simulation values are constant or near-constant - cannot calculate R²")
+        return {
+            "r_squared": 0.0,
+            "nrmse": 1.0,
+            "n_points": int(n_points),
+            "slope": 0.0,
+            "intercept": float(np.mean(exp_values_flat)),
+            "p_value": 1.0,
+            "mean_exp": float(np.mean(exp_values_flat)),
+            "mean_sim": float(np.mean(sim_values_flat)),
+            "error": "Simulation values are constant"
+        }
+
+    if exp_variance < 1e-20:
+        print("[WARNING] Experimental values are constant or near-constant - cannot calculate R²")
+        return {
+            "r_squared": 0.0,
+            "nrmse": 1.0,
+            "n_points": int(n_points),
+            "slope": 0.0,
+            "intercept": float(np.mean(exp_values_flat)),
+            "p_value": 1.0,
+            "mean_exp": float(np.mean(exp_values_flat)),
+            "mean_sim": float(np.mean(sim_values_flat)),
+            "error": "Experimental values are constant"
+        }
+
     # Perform linear regression: y = a*x + b where x=sim, y=exp
     # This is appropriate when comparing different units (e.g., dq vs C)
     # Returns: slope (a), intercept (b), r_value, p_value, std_err
@@ -557,7 +613,13 @@ def calculate_global_fit_metrics(
     r_squared = r_value ** 2  # R² from linear regression
 
     print(f"[DEBUG] Linear regression: y = {slope:.3e}*x + {intercept:.3e}")
-    print(f"[DEBUG] R² = {r_squared:.4f}, p-value = {p_value:.3e}")
+    print(f"[DEBUG] R² = {r_squared:.4f}, r_value = {r_value:.4f}, p-value = {p_value:.3e}")
+
+    # Check if R² is suspiciously low
+    if r_squared < 0.01:
+        print("[WARNING] Very low R² detected - possible unit mismatch or poor correlation")
+        print(f"  This may indicate that sim_y_var='{sim_y_var}' doesn't match experimental data units")
+        print(f"  Try different sim_y_var options: C, J_source, J_end, J_target")
 
     # Calculate residuals from best-fit line (not from y=x line)
     exp_predicted_from_regression = slope * sim_values_flat + intercept
